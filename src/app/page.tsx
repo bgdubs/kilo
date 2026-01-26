@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 
 interface Container {
   id: number;
@@ -27,14 +27,16 @@ export default function Home() {
   const containerInputRef = useRef<HTMLInputElement>(null);
   const itemInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    const fetchContainers = async () => {
-      const res = await fetch("/api/containers");
-      const data = await res.json();
-      setContainers(data);
-    };
-    fetchContainers();
+  const fetchContainers = useCallback(async () => {
+    const res = await fetch("/api/containers");
+    const data = await res.json();
+    setContainers(data);
   }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchContainers();
+  }, [fetchContainers]);
 
   const fetchItems = async (containerId: number) => {
     const res = await fetch(`/api/items?containerId=${containerId}`);
