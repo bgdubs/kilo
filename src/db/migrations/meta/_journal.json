@@ -8,6 +8,13 @@
       "when": 1769422744285,
       "tag": "0000_graceful_wasp",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1769469288879,
+      "tag": "0001_left_black_knight",
+      "breakpoints": true
     }
   ]
 }
