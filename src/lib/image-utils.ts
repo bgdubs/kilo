@@ -1,6 +1,9 @@
 /**
  * Image processing utilities for resizing, compression, and thumbnail generation
+ * Uses sharp for server-side image processing
  */
+
+import sharp from 'sharp';
 
 export interface ProcessedImageResult {
   imageData: string; // Base64 encoded image
@@ -15,17 +18,17 @@ export interface ProcessedImageResult {
 export interface ImageProcessingOptions {
   maxWidth?: number;
   maxHeight?: number;
-  quality?: number; // 0-1
+  quality?: number; // 1-100
   thumbnailSize?: number; // Square thumbnail size
-  thumbnailQuality?: number; // 0-1
+  thumbnailQuality?: number; // 1-100
 }
 
 const DEFAULT_OPTIONS: ImageProcessingOptions = {
   maxWidth: 1920,
   maxHeight: 1080,
-  quality: 0.85,
+  quality: 85,
   thumbnailSize: 200,
-  thumbnailQuality: 0.75,
+  thumbnailQuality: 75,
 };
 
 /**
@@ -40,38 +43,46 @@ export async function processImage(
   // Parse base64 data
   const { mimeType, data } = parseBase64Image(imageData);
   
-  // Convert base64 to blob
-  const blob = base64ToBlob(data, mimeType);
+  // Convert base64 to buffer
+  const buffer = Buffer.from(data, 'base64');
   
-  // Create image element to get dimensions
-  const img = await loadImage(blob);
+  // Get image metadata
+  const metadata = await sharp(buffer).metadata();
+  const originalWidth = metadata.width || 0;
+  const originalHeight = metadata.height || 0;
   
   // Calculate new dimensions maintaining aspect ratio
   const { width, height } = calculateDimensions(
-    img.width,
-    img.height,
+    originalWidth,
+    originalHeight,
     opts.maxWidth!,
     opts.maxHeight!
   );
   
   // Resize and compress main image
-  const processedData = await resizeImage(img, width, height, opts.quality!, mimeType);
+  const processedBuffer = await sharp(buffer)
+    .resize(width, height, {
+      fit: 'inside',
+      withoutEnlargement: true,
+    })
+    .jpeg({ quality: opts.quality! })
+    .toBuffer();
   
   // Generate thumbnail
-  const thumbnailData = await generateThumbnail(img, opts.thumbnailSize!, opts.thumbnailQuality!, mimeType);
+  const thumbnailBuffer = await generateThumbnail(buffer, opts.thumbnailSize!, opts.thumbnailQuality!);
   
   // Generate URLs (for now, use data URLs - in production, these would be file paths)
   const imageUrl = generateImageUrl();
   const thumbnailUrl = generateThumbnailUrl();
   
   return {
-    imageData: processedData,
+    imageData: `data:${mimeType};base64,${processedBuffer.toString('base64')}`,
     imageUrl,
-    thumbnailData,
+    thumbnailData: `data:${mimeType};base64,${thumbnailBuffer.toString('base64')}`,
     thumbnailUrl,
     width,
     height,
-    size: Math.round((processedData.length * 3) / 4), // Approximate size in bytes
+    size: processedBuffer.length,
   };
 }
 
@@ -87,40 +98,6 @@ function parseBase64Image(base64: string): { mimeType: string; data: string } {
     mimeType: matches[1],
     data: matches[2],
   };
-}
-
-/**
- * Convert base64 to Blob
- */
-function base64ToBlob(base64: string, mimeType: string): Blob {
-  const byteCharacters = atob(base64);
-  const byteArrays = [];
-  
-  for (let offset = 0; offset < byteCharacters.length; offset += 512) {
-    const slice = byteCharacters.slice(offset, offset + 512);
-    const byteNumbers = new Array(slice.length);
-    
-    for (let i = 0; i < slice.length; i++) {
-      byteNumbers[i] = slice.charCodeAt(i);
-    }
-    
-    const byteArray = new Uint8Array(byteNumbers);
-    byteArrays.push(byteArray);
-  }
-  
-  return new Blob(byteArrays, { type: mimeType });
-}
-
-/**
- * Load image from blob
- */
-function loadImage(blob: Blob): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.src = URL.createObjectURL(blob);
-  });
 }
 
 /**
@@ -146,84 +123,36 @@ function calculateDimensions(
 }
 
 /**
- * Resize image using canvas
- */
-async function resizeImage(
-  img: HTMLImageElement,
-  width: number,
-  height: number,
-  quality: number,
-  mimeType: string
-): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    
-    const ctx = canvas.getContext('2d');
-    if (!ctx) {
-      reject(new Error('Failed to get canvas context'));
-      return;
-    }
-    
-    // Use high-quality scaling
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
-    
-    ctx.drawImage(img, 0, 0, width, height);
-    
-    // Convert to base64 with specified quality
-    const dataUrl = canvas.toDataURL(mimeType, quality);
-    resolve(dataUrl);
-  });
-}
-
-/**
  * Generate square thumbnail
  */
 async function generateThumbnail(
-  img: HTMLImageElement,
+  buffer: Buffer,
   size: number,
-  quality: number,
-  mimeType: string
-): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const canvas = document.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size;
-    
-    const ctx = canvas.getContext('2d');
-    if (!ctx) {
-      reject(new Error('Failed to get canvas context'));
-      return;
-    }
-    
-    // Calculate crop dimensions (center crop)
-    const minDimension = Math.min(img.width, img.height);
-    const startX = (img.width - minDimension) / 2;
-    const startY = (img.height - minDimension) / 2;
-    
-    // Use high-quality scaling
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
-    
-    // Draw cropped and resized image
-    ctx.drawImage(
-      img,
-      startX,
-      startY,
-      minDimension,
-      minDimension,
-      0,
-      0,
-      size,
-      size
-    );
-    
-    // Convert to base64 with specified quality
-    const dataUrl = canvas.toDataURL(mimeType, quality);
-    resolve(dataUrl);
-  });
+  quality: number
+): Promise<Buffer> {
+  // Get image metadata
+  const metadata = await sharp(buffer).metadata();
+  const originalWidth = metadata.width || 0;
+  const originalHeight = metadata.height || 0;
+  
+  // Calculate crop dimensions (center crop)
+  const minDimension = Math.min(originalWidth, originalHeight);
+  const startX = Math.floor((originalWidth - minDimension) / 2);
+  const startY = Math.floor((originalHeight - minDimension) / 2);
+  
+  // Extract square crop and resize
+  return await sharp(buffer)
+    .extract({
+      left: startX,
+      top: startY,
+      width: minDimension,
+      height: minDimension,
+    })
+    .resize(size, size, {
+      fit: 'cover',
+    })
+    .jpeg({ quality })
+    .toBuffer();
 }
 
 /**
@@ -247,22 +176,17 @@ function generateThumbnailUrl(): string {
 /**
  * Get image info from base64 data
  */
-export function getImageInfo(base64: string): { width: number; height: number; size: number } {
-  const { mimeType, data } = parseBase64Image(base64);
-  const blob = base64ToBlob(data, mimeType);
+export async function getImageInfo(base64: string): Promise<{ width: number; height: number; size: number }> {
+  const { data } = parseBase64Image(base64);
+  const buffer = Buffer.from(data, 'base64');
   
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      resolve({
-        width: img.width,
-        height: img.height,
-        size: blob.size,
-      });
-    };
-    img.onerror = reject;
-    img.src = URL.createObjectURL(blob);
-  }) as any;
+  const metadata = await sharp(buffer).metadata();
+  
+  return {
+    width: metadata.width || 0,
+    height: metadata.height || 0,
+    size: buffer.length,
+  };
 }
 
 /**
