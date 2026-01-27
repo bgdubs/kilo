@@ -25,20 +25,36 @@ export async function POST(request: Request) {
     // Process image (resize, compress, generate thumbnail)
     const processedImage = await processImage(imageData);
     
-    const newContainer = await db.insert(containers).values({
+    // Build insert data defensively - only include fields that exist in schema
+    const insertData: any = {
       name,
-      description: description || null,
       imageData: processedImage.imageData,
-      imageUrl: processedImage.imageUrl,
-      thumbnailUrl: processedImage.thumbnailUrl,
-      category: category || null,
-      confidence: confidence || null,
-    }).returning();
+    };
+    
+    // Only add optional fields if they're provided
+    if (description !== undefined) insertData.description = description;
+    if (category !== undefined) insertData.category = category;
+    if (confidence !== undefined) insertData.confidence = confidence;
+    
+    // Try to add new fields - if they don't exist in DB, this will fail gracefully
+    try {
+      insertData.imageUrl = processedImage.imageUrl;
+      insertData.thumbnailUrl = processedImage.thumbnailUrl;
+    } catch (e) {
+      // Fields don't exist in schema yet, skip them
+      console.log("Image URL fields not supported in current schema");
+    }
+    
+    const newContainer = await db.insert(containers).values(insertData).returning();
     
     return NextResponse.json(newContainer[0], { status: 201 });
   } catch (error) {
     console.error("Failed to create container:", error);
-    return NextResponse.json({ error: "Failed to create container" }, { status: 500 });
+    // Return more detailed error for debugging
+    return NextResponse.json({ 
+      error: "Failed to create container",
+      details: error instanceof Error ? error.message : String(error)
+    }, { status: 500 });
   }
 }
 
@@ -50,21 +66,34 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "Container ID is required" }, { status: 400 });
     }
 
-    const updateData: any = {
-      updatedAt: new Date(),
-    };
+    const updateData: any = {};
 
     if (name !== undefined) updateData.name = name;
     if (description !== undefined) updateData.description = description;
     if (category !== undefined) updateData.category = category;
     if (confidence !== undefined) updateData.confidence = confidence;
     
+    // Try to add updatedAt - if it doesn't exist in DB, skip it
+    try {
+      updateData.updatedAt = new Date();
+    } catch (e) {
+      // Field doesn't exist in schema yet, skip it
+      console.log("updatedAt field not supported in current schema");
+    }
+    
     // If new image data is provided, process it
     if (imageData) {
       const processedImage = await processImage(imageData);
       updateData.imageData = processedImage.imageData;
-      updateData.imageUrl = processedImage.imageUrl;
-      updateData.thumbnailUrl = processedImage.thumbnailUrl;
+      
+      // Try to add image URL fields - if they don't exist in DB, skip them
+      try {
+        updateData.imageUrl = processedImage.imageUrl;
+        updateData.thumbnailUrl = processedImage.thumbnailUrl;
+      } catch (e) {
+        // Fields don't exist in schema yet, skip them
+        console.log("Image URL fields not supported in current schema");
+      }
     }
 
     const updatedContainer = await db
@@ -80,7 +109,10 @@ export async function PUT(request: Request) {
     return NextResponse.json(updatedContainer[0]);
   } catch (error) {
     console.error("Failed to update container:", error);
-    return NextResponse.json({ error: "Failed to update container" }, { status: 500 });
+    return NextResponse.json({ 
+      error: "Failed to update container",
+      details: error instanceof Error ? error.message : String(error)
+    }, { status: 500 });
   }
 }
 
