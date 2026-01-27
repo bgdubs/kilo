@@ -10,7 +10,11 @@ export async function GET() {
     return NextResponse.json(allContainers);
   } catch (error) {
     console.error("Failed to fetch containers:", error);
-    return NextResponse.json({ error: "Failed to fetch containers" }, { status: 500 });
+    return NextResponse.json({ 
+      error: "Failed to fetch containers",
+      details: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    }, { status: 500 });
   }
 }
 

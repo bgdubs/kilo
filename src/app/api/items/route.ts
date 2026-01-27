@@ -18,7 +18,11 @@ export async function GET(request: Request) {
     return NextResponse.json(allItems);
   } catch (error) {
     console.error("Failed to fetch items:", error);
-    return NextResponse.json({ error: "Failed to fetch items" }, { status: 500 });
+    return NextResponse.json({ 
+      error: "Failed to fetch items",
+      details: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    }, { status: 500 });
   }
 }
 
