@@ -84,12 +84,16 @@ export default function Home() {
     setError(null);
     try {
       const res = await fetch("/api/containers");
-      if (!res.ok) throw new Error("Failed to fetch containers");
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to fetch containers");
+      }
       const data = await res.json();
       setContainers(data);
     } catch (err) {
-      setError("Failed to load containers");
-      console.error(err);
+      const errorMessage = err instanceof Error ? err.message : "Failed to load containers";
+      setError(errorMessage);
+      console.error("Failed to fetch containers:", err);
     } finally {
       setLoading(false);
     }
@@ -104,12 +108,16 @@ export default function Home() {
     setError(null);
     try {
       const res = await fetch(`/api/items?containerId=${containerId}`);
-      if (!res.ok) throw new Error("Failed to fetch items");
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to fetch items");
+      }
       const data = await res.json();
       setItems(data);
     } catch (err) {
-      setError("Failed to load items");
-      console.error(err);
+      const errorMessage = err instanceof Error ? err.message : "Failed to load items";
+      setError(errorMessage);
+      console.error("Failed to fetch items:", err);
     } finally {
       setLoading(false);
     }
@@ -181,14 +189,14 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: newContainerName,
-          description: newContainerDescription,
           imageData: capturedImage,
-          category: newContainerCategory,
-          confidence: newContainerConfidence,
         }),
       });
       
-      if (!res.ok) throw new Error("Failed to create container");
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to create container");
+      }
       
       setCapturedImage(null);
       setNewContainerName("");
@@ -198,8 +206,9 @@ export default function Home() {
       setRecognitionResult(null);
       await fetchContainers();
     } catch (err) {
-      setError("Failed to create container");
-      console.error(err);
+      const errorMessage = err instanceof Error ? err.message : "Failed to create container";
+      setError(errorMessage);
+      console.error("Failed to create container:", err);
     } finally {
       setLoading(false);
     }
@@ -259,15 +268,15 @@ export default function Home() {
         body: JSON.stringify({
           containerId: selectedContainer.id,
           name: newItemName,
-          description: newItemDescription,
           imageData: capturedImage,
-          category: newItemCategory,
-          confidence: newItemConfidence,
           quantity: newItemQuantity,
         }),
       });
       
-      if (!res.ok) throw new Error("Failed to create item");
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to create item");
+      }
       
       setCapturedImage(null);
       setNewItemName("");
@@ -278,8 +287,9 @@ export default function Home() {
       setRecognitionResult(null);
       await fetchItems(selectedContainer.id);
     } catch (err) {
-      setError("Failed to create item");
-      console.error(err);
+      const errorMessage = err instanceof Error ? err.message : "Failed to create item";
+      setError(errorMessage);
+      console.error("Failed to create item:", err);
     } finally {
       setLoading(false);
     }
