@@ -676,6 +676,64 @@ export default function Home() {
               className="border px-4 py-2 rounded w-full mb-4"
             />
 
+            {/* New Item Form - shows after capturing image */}
+            {capturedImage && !selectedItem && (
+              <div className="bg-white rounded-lg shadow p-6 mb-6">
+                <h3 className="text-lg font-semibold mb-4">New Item</h3>
+                <div className="flex gap-4 mb-4">
+                  <img src={capturedImage} alt="New item" className="w-32 h-32 object-cover rounded" />
+                  <div className="flex-1 space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Name</label>
+                      <input
+                        type="text"
+                        value={newItemName}
+                        onChange={(e) => setNewItemName(e.target.value)}
+                        className="border px-3 py-2 rounded w-full"
+                        placeholder="Item name"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Quantity</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={newItemQuantity}
+                        onChange={(e) => setNewItemQuantity(parseInt(e.target.value) || 1)}
+                        className="border px-3 py-2 rounded w-24"
+                      />
+                    </div>
+                    {recognitionResult && (
+                      <div className="text-sm text-gray-600">
+                        <p>AI recognized: <strong>{recognitionResult.name}</strong> ({Math.round(recognitionResult.confidence * 100)}% confidence)</p>
+                        {recognitionResult.category && <p>Category: {recognitionResult.category}</p>}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={createItem}
+                    disabled={loading || !newItemName}
+                    className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded disabled:opacity-50"
+                  >
+                    Save Item
+                  </button>
+                  <button
+                    onClick={() => {
+                      setCapturedImage(null);
+                      setNewItemName("");
+                      setNewItemQuantity(1);
+                      setRecognitionResult(null);
+                    }}
+                    className="bg-gray-300 hover:bg-gray-400 text-gray-700 px-4 py-2 rounded"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
             {filteredItems.length === 0 ? (
               <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
                 {searchTerm ? "No items match your search" : "No items yet. Click 'Add Item' to get started!"}
