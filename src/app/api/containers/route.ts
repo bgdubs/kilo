@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { containers } from "@/db/schema";
+import { containers, items } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { processImage } from "@/lib/image-utils";
 
@@ -20,19 +20,20 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const { name, imageData } = await request.json();
-    
+    const { name, imageData, description, category } = await request.json();
+
     if (!name || !imageData) {
       return NextResponse.json({ error: "Name and image data are required" }, { status: 400 });
     }
 
     // Process image (resize, compress, generate thumbnail)
     const processedImage = await processImage(imageData);
-    
-    // Only use fields that exist in old schema (name, imageData)
+
     const newContainer = await db.insert(containers).values({
       name,
       imageData: processedImage.imageData,
+      description: description || null,
+      category: category || null,
     }).returning();
     
     return NextResponse.json(newContainer[0], { status: 201 });
@@ -47,16 +48,19 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
   try {
-    const { id, name, imageData } = await request.json();
-    
+    const { id, name, imageData, description, category, confidence } = await request.json();
+
     if (!id) {
       return NextResponse.json({ error: "Container ID is required" }, { status: 400 });
     }
 
-    const updateData: any = {};
+    const updateData: Record<string, unknown> = {};
 
     if (name !== undefined) updateData.name = name;
-    
+    if (description !== undefined) updateData.description = description;
+    if (category !== undefined) updateData.category = category;
+    if (confidence !== undefined) updateData.confidence = confidence;
+
     // If new image data is provided, process it
     if (imageData) {
       const processedImage = await processImage(imageData);
@@ -91,6 +95,9 @@ export async function DELETE(request: Request) {
     if (!id) {
       return NextResponse.json({ error: "Container ID is required" }, { status: 400 });
     }
+
+    // Delete all items in this container first
+    await db.delete(items).where(eq(items.containerId, parseInt(id)));
 
     const deletedContainer = await db
       .delete(containers)

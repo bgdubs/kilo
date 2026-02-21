@@ -30,13 +30,6 @@ interface Item {
   updatedAt: Date;
 }
 
-interface RecognitionResult {
-  name: string;
-  confidence: number;
-  category: string;
-  description?: string;
-}
-
 type View = "containers" | "items" | "edit-container" | "edit-item";
 
 export default function Home() {
@@ -63,9 +56,6 @@ export default function Home() {
   const [newItemCategory, setNewItemCategory] = useState("");
   const [newItemConfidence, setNewItemConfidence] = useState<number | null>(null);
   const [newItemQuantity, setNewItemQuantity] = useState(1);
-  
-  // Recognition result
-  const [recognitionResult, setRecognitionResult] = useState<RecognitionResult | null>(null);
   
   // Export options
   const [exportOptions, setExportOptions] = useState({
@@ -123,58 +113,27 @@ export default function Home() {
     }
   };
 
-  const handleContainerImageCapture = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleContainerImageCapture = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onload = async () => {
+      reader.onload = () => {
         const imageData = reader.result as string;
         setCapturedImage(imageData);
-        
-        // Auto-recognize container
-        const result = await recognizeImage(imageData, "container");
-        setRecognitionResult(result);
-        setNewContainerName(result.name);
-        setNewContainerCategory(result.category);
-        setNewContainerConfidence(result.confidence);
-        setNewContainerDescription(result.description || "");
       };
       reader.readAsDataURL(file);
     }
   };
 
-  const handleItemImageCapture = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleItemImageCapture = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onload = async () => {
+      reader.onload = () => {
         const imageData = reader.result as string;
         setCapturedImage(imageData);
-        
-        // Auto-recognize item
-        const result = await recognizeImage(imageData, "item");
-        setRecognitionResult(result);
-        setNewItemName(result.name);
-        setNewItemCategory(result.category);
-        setNewItemConfidence(result.confidence);
-        setNewItemDescription(result.description || "");
       };
       reader.readAsDataURL(file);
-    }
-  };
-
-  const recognizeImage = async (imageData: string, type: "container" | "item"): Promise<RecognitionResult> => {
-    try {
-      const res = await fetch("/api/recognize", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageData, type }),
-      });
-      if (!res.ok) throw new Error("Recognition failed");
-      return await res.json();
-    } catch (error) {
-      console.error("Recognition error:", error);
-      return { name: "", confidence: 0, category: "Unknown", description: "" };
     }
   };
 
@@ -190,6 +149,8 @@ export default function Home() {
         body: JSON.stringify({
           name: newContainerName,
           imageData: capturedImage,
+          description: newContainerDescription || undefined,
+          category: newContainerCategory || undefined,
         }),
       });
       
@@ -203,7 +164,7 @@ export default function Home() {
       setNewContainerDescription("");
       setNewContainerCategory("");
       setNewContainerConfidence(null);
-      setRecognitionResult(null);
+
       await fetchContainers();
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to create container";
@@ -245,7 +206,7 @@ export default function Home() {
       setNewContainerDescription("");
       setNewContainerCategory("");
       setNewContainerConfidence(null);
-      setRecognitionResult(null);
+
       setView("containers");
       await fetchContainers();
     } catch (err) {
@@ -270,6 +231,8 @@ export default function Home() {
           name: newItemName,
           imageData: capturedImage,
           quantity: newItemQuantity,
+          description: newItemDescription || undefined,
+          category: newItemCategory || undefined,
         }),
       });
       
@@ -284,7 +247,7 @@ export default function Home() {
       setNewItemCategory("");
       setNewItemConfidence(null);
       setNewItemQuantity(1);
-      setRecognitionResult(null);
+
       await fetchItems(selectedContainer.id);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to create item";
@@ -328,7 +291,7 @@ export default function Home() {
       setNewItemCategory("");
       setNewItemConfidence(null);
       setNewItemQuantity(1);
-      setRecognitionResult(null);
+
       setView("items");
       if (selectedContainer) {
         await fetchItems(selectedContainer.id);
@@ -411,6 +374,33 @@ export default function Home() {
     }
   };
 
+  const exportGallery = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams();
+      if (selectedContainer) {
+        params.append("containerId", selectedContainer.id.toString());
+      }
+
+      const res = await fetch(`/api/export-gallery?${params}`);
+      if (!res.ok) throw new Error("Failed to export gallery");
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "inventory-gallery.html";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError("Failed to export gallery");
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const openEditContainer = (container: Container) => {
     setSelectedContainer(container);
     setNewContainerName(container.name);
@@ -441,7 +431,6 @@ export default function Home() {
     setNewItemCategory("");
     setNewItemConfidence(null);
     setNewItemQuantity(1);
-    setRecognitionResult(null);
   };
 
   const filteredContainers = containers.filter(container =>
@@ -461,7 +450,7 @@ export default function Home() {
       <div className="max-w-7xl mx-auto">
         <header className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Photo Inventory</h1>
-          <p className="text-gray-600">Manage your inventory with photos and AI recognition</p>
+          <p className="text-gray-600">Manage your inventory with photos</p>
         </header>
 
         {error && (
@@ -533,6 +522,13 @@ export default function Home() {
               className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded disabled:opacity-50"
             >
               Export
+            </button>
+            <button
+              onClick={exportGallery}
+              disabled={loading}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded disabled:opacity-50"
+            >
+              Export HTML Gallery
             </button>
           </div>
         </div>
@@ -703,12 +699,6 @@ export default function Home() {
                         className="border px-3 py-2 rounded w-24"
                       />
                     </div>
-                    {recognitionResult && (
-                      <div className="text-sm text-gray-600">
-                        <p>AI recognized: <strong>{recognitionResult.name}</strong> ({Math.round(recognitionResult.confidence * 100)}% confidence)</p>
-                        {recognitionResult.category && <p>Category: {recognitionResult.category}</p>}
-                      </div>
-                    )}
                   </div>
                 </div>
                 <div className="flex gap-2">
@@ -724,7 +714,7 @@ export default function Home() {
                       setCapturedImage(null);
                       setNewItemName("");
                       setNewItemQuantity(1);
-                      setRecognitionResult(null);
+                
                     }}
                     className="bg-gray-300 hover:bg-gray-400 text-gray-700 px-4 py-2 rounded"
                   >
@@ -981,24 +971,7 @@ export default function Home() {
             <div className="bg-white rounded-lg shadow-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
               <h3 className="text-xl font-semibold mb-4">New Container</h3>
               <img src={capturedImage} alt="Captured" className="w-full h-48 object-cover rounded mb-4" />
-              
-              {recognitionResult && (
-                <div className="bg-blue-50 border border-blue-200 rounded p-3 mb-4">
-                  <p className="text-sm text-blue-800">
-                    <strong>AI Recognition:</strong> {recognitionResult.name}
-                    {recognitionResult.confidence > 0 && (
-                      <span className="ml-2">({Math.round(recognitionResult.confidence * 100)}% confidence)</span>
-                    )}
-                  </p>
-                  {recognitionResult.category && (
-                    <p className="text-sm text-blue-800">Category: {recognitionResult.category}</p>
-                  )}
-                  {recognitionResult.description && (
-                    <p className="text-sm text-blue-800">Description: {recognitionResult.description}</p>
-                  )}
-                </div>
-              )}
-              
+
               <div className="space-y-3">
                 <div>
                   <label className="block text-sm font-medium mb-1">Name *</label>
@@ -1056,24 +1029,7 @@ export default function Home() {
             <div className="bg-white rounded-lg shadow-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
               <h3 className="text-xl font-semibold mb-4">New Item</h3>
               <img src={capturedImage} alt="Captured" className="w-full h-48 object-cover rounded mb-4" />
-              
-              {recognitionResult && (
-                <div className="bg-blue-50 border border-blue-200 rounded p-3 mb-4">
-                  <p className="text-sm text-blue-800">
-                    <strong>AI Recognition:</strong> {recognitionResult.name}
-                    {recognitionResult.confidence > 0 && (
-                      <span className="ml-2">({Math.round(recognitionResult.confidence * 100)}% confidence)</span>
-                    )}
-                  </p>
-                  {recognitionResult.category && (
-                    <p className="text-sm text-blue-800">Category: {recognitionResult.category}</p>
-                  )}
-                  {recognitionResult.description && (
-                    <p className="text-sm text-blue-800">Description: {recognitionResult.description}</p>
-                  )}
-                </div>
-              )}
-              
+
               <div className="space-y-3">
                 <div>
                   <label className="block text-sm font-medium mb-1">Name *</label>

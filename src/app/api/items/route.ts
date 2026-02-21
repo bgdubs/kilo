@@ -28,21 +28,22 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const { containerId, name, imageData, quantity } = await request.json();
-    
+    const { containerId, name, imageData, quantity, description, category } = await request.json();
+
     if (!containerId || !name || !imageData) {
       return NextResponse.json({ error: "Container ID, name, and image data are required" }, { status: 400 });
     }
 
     // Process image (resize, compress, generate thumbnail)
     const processedImage = await processImage(imageData);
-    
-    // Only use fields that exist in old schema (containerId, name, imageData, quantity)
+
     const newItem = await db.insert(items).values({
       containerId,
       name,
       imageData: processedImage.imageData,
       quantity: quantity || 1,
+      description: description || null,
+      category: category || null,
     }).returning();
     
     return NextResponse.json(newItem[0], { status: 201 });
@@ -57,17 +58,20 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
   try {
-    const { id, name, imageData, quantity } = await request.json();
-    
+    const { id, name, imageData, quantity, description, category, confidence } = await request.json();
+
     if (!id) {
       return NextResponse.json({ error: "Item ID is required" }, { status: 400 });
     }
 
-    const updateData: any = {};
+    const updateData: Record<string, unknown> = {};
 
     if (name !== undefined) updateData.name = name;
     if (quantity !== undefined) updateData.quantity = quantity;
-    
+    if (description !== undefined) updateData.description = description;
+    if (category !== undefined) updateData.category = category;
+    if (confidence !== undefined) updateData.confidence = confidence;
+
     // If new image data is provided, process it
     if (imageData) {
       const processedImage = await processImage(imageData);
