@@ -230,7 +230,7 @@ export default function Home() {
           containerId: selectedContainer.id,
           name: newItemName,
           imageData: capturedImage,
-          quantity: newItemQuantity,
+          quantity: newItemQuantity || 1,
           description: newItemDescription || undefined,
           category: newItemCategory || undefined,
         }),
@@ -270,7 +270,7 @@ export default function Home() {
         description: newItemDescription,
         category: newItemCategory,
         confidence: newItemConfidence,
-        quantity: newItemQuantity,
+        quantity: newItemQuantity || 1,
       };
       
       if (capturedImage) {
@@ -694,8 +694,8 @@ export default function Home() {
                       <input
                         type="number"
                         min="1"
-                        value={newItemQuantity}
-                        onChange={(e) => setNewItemQuantity(parseInt(e.target.value) || 1)}
+                        value={newItemQuantity || ""}
+                        onChange={(e) => setNewItemQuantity(e.target.value === "" ? 0 : parseInt(e.target.value) || 0)}
                         className="border px-3 py-2 rounded w-24"
                       />
                     </div>
@@ -906,8 +906,8 @@ export default function Home() {
                 <input
                   type="number"
                   min="1"
-                  value={newItemQuantity}
-                  onChange={(e) => setNewItemQuantity(parseInt(e.target.value) || 1)}
+                  value={newItemQuantity || ""}
+                  onChange={(e) => setNewItemQuantity(e.target.value === "" ? 0 : parseInt(e.target.value) || 0)}
                   className="border px-3 py-2 rounded w-full"
                 />
               </div>
@@ -1066,8 +1066,8 @@ export default function Home() {
                   <input
                     type="number"
                     min="1"
-                    value={newItemQuantity}
-                    onChange={(e) => setNewItemQuantity(parseInt(e.target.value) || 1)}
+                    value={newItemQuantity || ""}
+                    onChange={(e) => setNewItemQuantity(e.target.value === "" ? 0 : parseInt(e.target.value) || 0)}
                     className="border px-3 py-2 rounded w-full"
                   />
                 </div>

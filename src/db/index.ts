@@ -1,3 +1,11 @@
-import { createDatabase } from "@kilocode/app-builder-db";
+import { drizzle } from "drizzle-orm/better-sqlite3";
+import Database from "better-sqlite3";
 import * as schema from "./schema";
-export const db = createDatabase(schema);
+import path from "path";
+
+const dbPath = process.env.DB_PATH || path.join(process.cwd(), "inventory.db");
+const sqlite = new Database(dbPath);
+sqlite.pragma("journal_mode = WAL");
+sqlite.pragma("foreign_keys = ON");
+
+export const db = drizzle(sqlite, { schema });
