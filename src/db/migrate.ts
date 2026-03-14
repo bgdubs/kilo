@@ -21,6 +21,17 @@ sqlite.exec(`
     thumbnail_url TEXT,
     category TEXT,
     confidence REAL,
+    set_id INTEGER,
+    created_at INTEGER,
+    updated_at INTEGER
+  );
+
+  CREATE TABLE IF NOT EXISTS sets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT,
+    image_data TEXT,
+    parent_id INTEGER,
     created_at INTEGER,
     updated_at INTEGER
   );
