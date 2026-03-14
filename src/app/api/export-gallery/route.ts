@@ -1,6 +1,8 @@
+export const dynamic = "force-dynamic";
+
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { containers, items } from "@/db/schema";
+import { containers, items, sets } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
 export async function GET(request: Request) {
@@ -28,7 +30,9 @@ export async function GET(request: Request) {
       allItems = await db.select().from(items);
     }
 
-    const html = buildGalleryHTML(allContainers, allItems);
+    const allSets = await db.select().from(sets);
+
+    const html = buildGalleryHTML(allContainers, allItems, allSets);
 
     return new NextResponse(html, {
       headers: {
@@ -54,15 +58,15 @@ function esc(s: string | null | undefined): string {
     .replace(/"/g, "&quot;");
 }
 
-function buildGalleryHTML(
-  allContainers: Array<{
+function buildContainerSection(
+  c: {
     id: number;
     name: string;
     description: string | null;
     imageData: string;
     category: string | null;
     createdAt: Date | null;
-  }>,
+  },
   allItems: Array<{
     id: number;
     containerId: number;
@@ -74,27 +78,10 @@ function buildGalleryHTML(
     createdAt: Date | null;
   }>
 ): string {
-  const containerCards = allContainers
-    .map((c) => {
-      const itemCount = allItems.filter((i) => i.containerId === c.id).length;
-      return `<div class="card" onclick="showContainer(${c.id})">
-        <img src="${esc(c.imageData)}" alt="${esc(c.name)}">
-        <div class="info">
-          <h3>${esc(c.name)}</h3>
-          ${c.category ? `<span class="badge">${esc(c.category)}</span>` : ""}
-          ${c.description ? `<p class="desc">${esc(c.description)}</p>` : ""}
-          <p class="meta">${itemCount} item${itemCount !== 1 ? "s" : ""}</p>
-        </div>
-      </div>`;
-    })
-    .join("\n");
-
-  const containerSections = allContainers
-    .map((c) => {
-      const cItems = allItems.filter((i) => i.containerId === c.id);
-      const itemCards = cItems
-        .map(
-          (i) => `<div class="card">
+  const cItems = allItems.filter((i) => i.containerId === c.id);
+  const itemCards = cItems
+    .map(
+      (i) => `<div class="card">
           <img src="${esc(i.imageData)}" alt="${esc(i.name)}">
           <div class="info">
             <h3>${esc(i.name)}</h3>
@@ -103,12 +90,11 @@ function buildGalleryHTML(
             ${i.description ? `<p class="desc">${esc(i.description)}</p>` : ""}
           </div>
         </div>`
-        )
-        .join("\n");
+    )
+    .join("\n");
 
-      return `<div id="container-${c.id}" class="container-view" style="display:none">
-        <button class="back" onclick="showGrid()">&larr; Back to Containers</button>
-        <div class="container-header">
+  return `<details class="container-section">
+        <summary class="container-header">
           <img src="${esc(c.imageData)}" alt="${esc(c.name)}">
           <div>
             <h2>${esc(c.name)}</h2>
@@ -116,17 +102,108 @@ function buildGalleryHTML(
             ${c.description ? `<p class="desc">${esc(c.description)}</p>` : ""}
             <p class="meta">${cItems.length} item${cItems.length !== 1 ? "s" : ""}</p>
           </div>
-        </div>
+          <span class="chevron"></span>
+        </summary>
         ${cItems.length === 0 ? '<p class="empty">No items in this container.</p>' : `<div class="grid">${itemCards}</div>`}
-      </div>`;
-    })
-    .join("\n");
+      </details>`;
+}
+
+function buildGalleryHTML(
+  allContainers: Array<{
+    id: number;
+    name: string;
+    description: string | null;
+    imageData: string;
+    category: string | null;
+    setId: number | null;
+    createdAt: Date | null;
+  }>,
+  allItems: Array<{
+    id: number;
+    containerId: number;
+    name: string;
+    description: string | null;
+    imageData: string;
+    category: string | null;
+    quantity: number;
+    createdAt: Date | null;
+  }>,
+  allSets: Array<{
+    id: number;
+    name: string;
+    description: string | null;
+  }>
+): string {
+  // Group containers by set
+  const setMap = new Map<number, typeof allSets[0]>();
+  for (const s of allSets) {
+    setMap.set(s.id, s);
+  }
+
+  const containersBySet = new Map<number | null, typeof allContainers>();
+  for (const c of allContainers) {
+    const key = c.setId;
+    if (!containersBySet.has(key)) {
+      containersBySet.set(key, []);
+    }
+    containersBySet.get(key)!.push(c);
+  }
+
+  // Build set sections
+  const setSections: string[] = [];
+
+  // Named sets first
+  for (const s of allSets) {
+    const setContainers = containersBySet.get(s.id);
+    if (!setContainers || setContainers.length === 0) continue;
+
+    const containerHTML = setContainers
+      .map((c) => buildContainerSection(c, allItems))
+      .join("\n");
+
+    setSections.push(`<details class="set-section" open>
+        <summary class="set-header">
+          <div>
+            <h2>${esc(s.name)}</h2>
+            ${s.description ? `<p class="desc">${esc(s.description)}</p>` : ""}
+            <p class="meta">${setContainers.length} container${setContainers.length !== 1 ? "s" : ""}</p>
+          </div>
+          <span class="chevron"></span>
+        </summary>
+        <div class="set-contents">
+          ${containerHTML}
+        </div>
+      </details>`);
+  }
+
+  // Unassigned containers
+  const unassigned = containersBySet.get(null);
+  if (unassigned && unassigned.length > 0) {
+    const containerHTML = unassigned
+      .map((c) => buildContainerSection(c, allItems))
+      .join("\n");
+
+    setSections.push(`<details class="set-section" open>
+        <summary class="set-header">
+          <div>
+            <h2>Unassigned</h2>
+            <p class="meta">${unassigned.length} container${unassigned.length !== 1 ? "s" : ""}</p>
+          </div>
+          <span class="chevron"></span>
+        </summary>
+        <div class="set-contents">
+          ${containerHTML}
+        </div>
+      </details>`);
+  }
 
   const date = new Date().toLocaleDateString("en-US", {
     year: "numeric",
     month: "long",
     day: "numeric",
   });
+
+  const setCount = allSets.filter((s) => containersBySet.has(s.id) && containersBySet.get(s.id)!.length > 0).length;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -140,7 +217,7 @@ function buildGalleryHTML(
   h1 { font-size: 1.8rem; margin-bottom: 4px; }
   .subtitle { color: #888; margin-bottom: 24px; font-size: 0.9rem; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
-  .card { background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.1); cursor: pointer; transition: box-shadow 0.2s; }
+  .card { background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.1); transition: box-shadow 0.2s; }
   .card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
   .card img { width: 100%; height: 180px; object-fit: cover; display: block; }
   .info { padding: 12px; }
@@ -149,44 +226,33 @@ function buildGalleryHTML(
   .badge.qty { background: #e6f4ea; color: #1e8e3e; }
   .desc { font-size: 0.85rem; color: #666; margin: 6px 0; }
   .meta { font-size: 0.8rem; color: #999; }
-  .back { background: none; border: none; color: #1a73e8; font-size: 1rem; cursor: pointer; padding: 8px 0; margin-bottom: 16px; }
-  .back:hover { text-decoration: underline; }
-  .container-header { display: flex; gap: 16px; margin-bottom: 20px; align-items: flex-start; }
-  .container-header img { width: 160px; height: 120px; object-fit: cover; border-radius: 8px; flex-shrink: 0; }
-  .container-header h2 { font-size: 1.4rem; margin-bottom: 6px; }
-  .container-view .card { cursor: default; }
+  .set-section { margin-bottom: 20px; border: 1px solid #ddd; border-radius: 12px; overflow: hidden; }
+  .set-header { display: flex; gap: 16px; padding: 16px; align-items: center; cursor: pointer; list-style: none; background: #f0f0f0; }
+  .set-header::-webkit-details-marker { display: none; }
+  .set-header h2 { font-size: 1.3rem; margin-bottom: 4px; }
+  .set-contents { padding: 12px; }
+  .container-section { margin-bottom: 12px; background: #fff; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); overflow: hidden; }
+  .container-header { display: flex; gap: 16px; padding: 12px; align-items: center; cursor: pointer; list-style: none; }
+  .container-header::-webkit-details-marker { display: none; }
+  .container-header img { width: 80px; height: 60px; object-fit: cover; border-radius: 6px; flex-shrink: 0; }
+  .container-header h2 { font-size: 1.1rem; margin-bottom: 4px; }
+  .chevron { margin-left: auto; flex-shrink: 0; width: 20px; height: 20px; border-right: 2.5px solid #999; border-bottom: 2.5px solid #999; transform: rotate(-45deg); transition: transform 0.2s; }
+  .set-section[open] > .set-header .chevron { transform: rotate(45deg); }
+  .container-section[open] > .container-header .chevron { transform: rotate(45deg); }
+  .container-section > .grid, .container-section > .empty { padding: 0 12px 16px; }
   .empty { color: #999; text-align: center; padding: 40px; }
   @media (max-width: 600px) {
     .grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
     .card img { height: 140px; }
-    .container-header { flex-direction: column; }
-    .container-header img { width: 100%; height: 200px; }
+    .container-header img { width: 60px; height: 45px; }
   }
 </style>
 </head>
 <body>
   <h1>Photo Inventory</h1>
-  <p class="subtitle">Exported ${date} &middot; ${allContainers.length} container${allContainers.length !== 1 ? "s" : ""}, ${allItems.length} item${allItems.length !== 1 ? "s" : ""}</p>
+  <p class="subtitle">Exported ${date} &middot; ${setCount} set${setCount !== 1 ? "s" : ""}, ${allContainers.length} container${allContainers.length !== 1 ? "s" : ""}, ${allItems.length} item${allItems.length !== 1 ? "s" : ""}</p>
 
-  <div id="grid-view">
-    ${allContainers.length === 0 ? '<p class="empty">No containers.</p>' : `<div class="grid">${containerCards}</div>`}
-  </div>
-
-  ${containerSections}
-
-  <script>
-    function showContainer(id) {
-      document.getElementById('grid-view').style.display = 'none';
-      document.querySelectorAll('.container-view').forEach(el => el.style.display = 'none');
-      document.getElementById('container-' + id).style.display = 'block';
-      window.scrollTo(0, 0);
-    }
-    function showGrid() {
-      document.querySelectorAll('.container-view').forEach(el => el.style.display = 'none');
-      document.getElementById('grid-view').style.display = 'block';
-      window.scrollTo(0, 0);
-    }
-  </script>
+  ${allContainers.length === 0 ? '<p class="empty">No containers.</p>' : setSections.join("\n")}
 </body>
 </html>`;
 }

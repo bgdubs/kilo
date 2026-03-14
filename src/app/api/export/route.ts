@@ -1,6 +1,8 @@
+export const dynamic = "force-dynamic";
+
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { containers, items } from "@/db/schema";
+import { containers, items, sets } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
 interface ExportOptions {
@@ -22,6 +24,13 @@ export async function GET(request: Request) {
     const format = (searchParams.get("format") as "csv" | "json") || "csv";
     const containerId = searchParams.get("containerId");
 
+    // Fetch all sets and build lookup map
+    const allSets = await db.select().from(sets);
+    const setMap: Record<number, string> = {};
+    for (const s of allSets) {
+      setMap[s.id] = s.name;
+    }
+
     // Fetch all containers
     const allContainers = await db.select().from(containers);
 
@@ -37,9 +46,12 @@ export async function GET(request: Request) {
     const exportData = allContainers.flatMap((container) => {
       const containerItems = allItems.filter((item) => item.containerId === container.id);
       
+      const setName = container.setId ? setMap[container.setId] || "" : "";
+
       if (containerItems.length === 0) {
         // Container with no items
         return [{
+          setName,
           containerId: container.id,
           containerName: container.name,
           containerDescription: container.description || "",
@@ -59,6 +71,7 @@ export async function GET(request: Request) {
       }
 
       return containerItems.map((item) => ({
+        setName,
         containerId: container.id,
         containerName: container.name,
         containerDescription: container.description || "",
@@ -113,6 +126,7 @@ function generateCSV(data: any[], options: ExportOptions): string {
 
   // Build headers based on options
   const headers = [
+    "Set Name",
     "Container ID",
     "Container Name",
     ...(options.includeDescriptions ? ["Container Description"] : []),
@@ -132,6 +146,7 @@ function generateCSV(data: any[], options: ExportOptions): string {
   // Build CSV rows
   const rows = data.map((row) => {
     const values = [
+      escapeCSV(row.setName),
       row.containerId,
       escapeCSV(row.containerName),
       ...(options.includeDescriptions ? [escapeCSV(row.containerDescription)] : []),
