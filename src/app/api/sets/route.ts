@@ -37,18 +37,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
     }
 
-    const values: Record<string, unknown> = {
+    let processedImageData: string | undefined;
+    if (imageData) {
+      const processed = await processImage(imageData);
+      processedImageData = processed.imageData;
+    }
+
+    const newSet = await db.insert(sets).values({
       name,
       description: description || null,
       parentId: parentId || null,
-    };
-
-    if (imageData) {
-      const processed = await processImage(imageData);
-      values.imageData = processed.imageData;
-    }
-
-    const newSet = await db.insert(sets).values(values).returning();
+      imageData: processedImageData || null,
+    }).returning();
     return NextResponse.json(newSet[0], { status: 201 });
   } catch (error) {
     console.error("Failed to create set:", error);
