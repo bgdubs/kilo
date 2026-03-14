@@ -1,16 +1,28 @@
+export const dynamic = "force-dynamic";
+
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { containers, items } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, desc, isNull } from "drizzle-orm";
 import { processImage } from "@/lib/image-utils";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const allContainers = await db.select().from(containers);
-    return NextResponse.json(allContainers);
+    const { searchParams } = new URL(request.url);
+    const setIdParam = searchParams.get("setId");
+
+    let result;
+    if (setIdParam === "null") {
+      result = await db.select().from(containers).where(isNull(containers.setId)).orderBy(desc(containers.createdAt));
+    } else if (setIdParam) {
+      result = await db.select().from(containers).where(eq(containers.setId, parseInt(setIdParam))).orderBy(desc(containers.createdAt));
+    } else {
+      result = await db.select().from(containers).orderBy(desc(containers.createdAt));
+    }
+    return NextResponse.json(result);
   } catch (error) {
     console.error("Failed to fetch containers:", error);
-    return NextResponse.json({ 
+    return NextResponse.json({
       error: "Failed to fetch containers",
       details: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined
@@ -20,7 +32,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const { name, imageData, description, category } = await request.json();
+    const { name, imageData, description, category, setId } = await request.json();
 
     if (!name || !imageData) {
       return NextResponse.json({ error: "Name and image data are required" }, { status: 400 });
@@ -34,6 +46,7 @@ export async function POST(request: Request) {
       imageData: processedImage.imageData,
       description: description || null,
       category: category || null,
+      setId: setId || null,
     }).returning();
     
     return NextResponse.json(newContainer[0], { status: 201 });
@@ -48,7 +61,7 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
   try {
-    const { id, name, imageData, description, category, confidence } = await request.json();
+    const { id, name, imageData, description, category, confidence, setId } = await request.json();
 
     if (!id) {
       return NextResponse.json({ error: "Container ID is required" }, { status: 400 });
@@ -60,6 +73,7 @@ export async function PUT(request: Request) {
     if (description !== undefined) updateData.description = description;
     if (category !== undefined) updateData.category = category;
     if (confidence !== undefined) updateData.confidence = confidence;
+    if (setId !== undefined) updateData.setId = setId;
 
     // If new image data is provided, process it
     if (imageData) {
