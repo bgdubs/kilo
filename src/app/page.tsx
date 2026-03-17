@@ -1636,22 +1636,36 @@ export default function Home() {
         )}
 
         {/* Move-To Modal */}
-        {showMoveModal && moveTarget && (
+        {showMoveModal && (moveTarget || isBulkMove) && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-lg shadow-lg p-6 max-w-md w-full max-h-[80vh] overflow-y-auto">
-              <h3 className="text-xl font-semibold mb-4">Move to...</h3>
+              <h3 className="text-xl font-semibold mb-4">
+                {isBulkMove ? `Move ${selectedContainerIds.size} containers to…` : "Move to…"}
+              </h3>
               <div className="space-y-2">
-                <button onClick={() => moveToSet(null)} className="w-full text-left px-4 py-3 rounded border hover:bg-gray-50 font-medium">
+                <button
+                  onClick={() => isBulkMove ? bulkMoveToSet(null) : moveToSet(null)}
+                  className="w-full text-left px-4 py-3 rounded border hover:bg-gray-50 font-medium"
+                >
                   Top Level (unassigned)
                 </button>
-                {allSets.filter(s => s.id !== moveTarget.id).map(set => (
-                  <button key={set.id} onClick={() => moveToSet(set.id)} className="w-full text-left px-4 py-3 rounded border hover:bg-gray-50">
+                {allSets.filter(s => moveTarget?.type === "set" ? s.id !== moveTarget.id : true).map(set => (
+                  <button
+                    key={set.id}
+                    onClick={() => isBulkMove ? bulkMoveToSet(set.id) : moveToSet(set.id)}
+                    className="w-full text-left px-4 py-3 rounded border hover:bg-gray-50"
+                  >
                     {set.name}
                     {set.description && <span className="text-gray-500 text-sm ml-2">&mdash; {set.description}</span>}
                   </button>
                 ))}
               </div>
-              <button onClick={() => { setShowMoveModal(false); setMoveTarget(null); }} className="mt-4 w-full bg-gray-300 hover:bg-gray-400 text-gray-700 px-4 py-2 rounded">Cancel</button>
+              <button
+                onClick={() => { setShowMoveModal(false); setMoveTarget(null); setIsBulkMove(false); }}
+                className="mt-4 w-full bg-gray-300 hover:bg-gray-400 text-gray-700 px-4 py-2 rounded"
+              >
+                Cancel
+              </button>
             </div>
           </div>
         )}
