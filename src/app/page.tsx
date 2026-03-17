@@ -1098,7 +1098,7 @@ export default function Home() {
         )}
 
         {/* Bulk selection action bar */}
-        {selectedContainerIds.size > 0 && (
+        {view === "browse" && selectedContainerIds.size > 0 && (
           <div className="fixed bottom-0 left-0 right-0 z-50 flex items-center justify-between gap-4 bg-gray-900 text-white px-6 py-4 shadow-lg animate-in slide-in-from-bottom duration-200">
             <span className="text-sm font-medium">{selectedContainerIds.size} selected</span>
             <div className="flex gap-3">
