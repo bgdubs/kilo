@@ -87,7 +87,9 @@ export default function Home() {
   const [showCreateSet, setShowCreateSet] = useState(false);
   const [showMoveModal, setShowMoveModal] = useState(false);
   const [moveTarget, setMoveTarget] = useState<{ type: "container" | "set"; id: number } | null>(null);
+  const [isBulkMove, setIsBulkMove] = useState(false);
   const [allSets, setAllSets] = useState<Set[]>([]);
+  const [selectedContainerIds, setSelectedContainerIds] = useState<Set<number>>(new Set());
 
   const containerInputRef = useRef<HTMLInputElement>(null);
   const itemInputRef = useRef<HTMLInputElement>(null);
@@ -163,6 +165,10 @@ export default function Home() {
     fetchSets(null);
     fetchContainersForSet(null);
   }, [fetchSets, fetchContainersForSet]);
+
+  useEffect(() => {
+    setSelectedContainerIds(new Set());
+  }, [currentSet, view]);
 
   const fetchItems = async (containerId: number) => {
     setLoading(true);
