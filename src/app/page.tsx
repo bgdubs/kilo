@@ -997,7 +997,21 @@ export default function Home() {
                 {/* Containers grid */}
                 {filteredContainers.length > 0 && (
                   <div className={selectedContainerIds.size > 0 ? "pb-20" : ""}>
-                    <h3 className="text-lg font-medium text-gray-700 mb-3">Containers</h3>
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-lg font-medium text-gray-700">Containers</h3>
+                      <button
+                        onClick={() => {
+                          if (selectedContainerIds.size === filteredContainers.length) {
+                            setSelectedContainerIds(new Set());
+                          } else {
+                            setSelectedContainerIds(new Set(filteredContainers.map(c => c.id)));
+                          }
+                        }}
+                        className="text-sm text-blue-600 hover:text-blue-800"
+                      >
+                        {selectedContainerIds.size === filteredContainers.length ? "Deselect all" : "Select all"}
+                      </button>
+                    </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                       {filteredContainers.map(container => (
                         <div
