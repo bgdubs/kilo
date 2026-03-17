@@ -996,7 +996,7 @@ export default function Home() {
 
                 {/* Containers grid */}
                 {filteredContainers.length > 0 && (
-                  <div>
+                  <div className={selectedContainerIds.size > 0 ? "pb-20" : ""}>
                     <h3 className="text-lg font-medium text-gray-700 mb-3">Containers</h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                       {filteredContainers.map(container => (
@@ -1094,6 +1094,28 @@ export default function Home() {
                 )}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Bulk selection action bar */}
+        {selectedContainerIds.size > 0 && (
+          <div className="fixed bottom-0 left-0 right-0 z-50 flex items-center justify-between gap-4 bg-gray-900 text-white px-6 py-4 shadow-lg animate-in slide-in-from-bottom duration-200">
+            <span className="text-sm font-medium">{selectedContainerIds.size} selected</span>
+            <div className="flex gap-3">
+              <button
+                onClick={openBulkMoveModal}
+                disabled={loading}
+                className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-4 py-2 rounded text-sm font-medium"
+              >
+                Move to Set
+              </button>
+              <button
+                onClick={() => setSelectedContainerIds(new Set())}
+                className="bg-gray-600 hover:bg-gray-500 text-white px-4 py-2 rounded text-sm"
+              >
+                Clear
+              </button>
+            </div>
           </div>
         )}
 
