@@ -30,7 +30,7 @@ interface Item {
   updatedAt: Date;
 }
 
-interface Set {
+interface InventorySet {
   id: number;
   name: string;
   description?: string;
@@ -76,19 +76,19 @@ export default function Home() {
   });
 
   // Set state
-  const [sets, setSets] = useState<Set[]>([]);
-  const [currentSet, setCurrentSet] = useState<Set | null>(null);
-  const [breadcrumbs, setBreadcrumbs] = useState<Set[]>([]);
+  const [sets, setSets] = useState<InventorySet[]>([]);
+  const [currentSet, setCurrentSet] = useState<InventorySet | null>(null);
+  const [breadcrumbs, setBreadcrumbs] = useState<InventorySet[]>([]);
   const [showAllItems, setShowAllItems] = useState(false);
   const [allSetItems, setAllSetItems] = useState<Item[]>([]);
-  const [selectedSet, setSelectedSet] = useState<Set | null>(null);
+  const [selectedSet, setSelectedSet] = useState<InventorySet | null>(null);
   const [newSetName, setNewSetName] = useState("");
   const [newSetDescription, setNewSetDescription] = useState("");
   const [showCreateSet, setShowCreateSet] = useState(false);
   const [showMoveModal, setShowMoveModal] = useState(false);
   const [moveTarget, setMoveTarget] = useState<{ type: "container" | "set"; id: number } | null>(null);
   const [isBulkMove, setIsBulkMove] = useState(false);
-  const [allSets, setAllSets] = useState<Set[]>([]);
+  const [allSets, setAllSets] = useState<InventorySet[]>([]);
   const [selectedContainerIds, setSelectedContainerIds] = useState<Set<number>>(new Set());
 
   const containerInputRef = useRef<HTMLInputElement>(null);
@@ -449,7 +449,7 @@ export default function Home() {
   };
 
   // Navigation functions
-  const navigateIntoSet = async (set: Set) => {
+  const navigateIntoSet = async (set: InventorySet) => {
     setBreadcrumbs(prev => [...prev, set]);
     setCurrentSet(set);
     setShowAllItems(false);
@@ -477,7 +477,7 @@ export default function Home() {
     }
   };
 
-  const openEditSet = (set: Set) => {
+  const openEditSet = (set: InventorySet) => {
     setSelectedSet(set);
     setNewSetName(set.name);
     setNewSetDescription(set.description || "");
