@@ -1002,8 +1002,28 @@ export default function Home() {
                       {filteredContainers.map(container => (
                         <div
                           key={container.id}
-                          className="bg-white rounded-lg shadow overflow-hidden hover:shadow-lg transition-shadow"
+                          className={`bg-white rounded-lg shadow overflow-hidden hover:shadow-lg transition-shadow relative ${
+                            selectedContainerIds.has(container.id) ? "ring-2 ring-blue-500" : ""
+                          }`}
                         >
+                          <label className="absolute top-2 left-2 z-10 cursor-pointer" onClick={e => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              checked={selectedContainerIds.has(container.id)}
+                              onChange={() => {
+                                setSelectedContainerIds(prev => {
+                                  const next = new Set(prev);
+                                  if (next.has(container.id)) {
+                                    next.delete(container.id);
+                                  } else {
+                                    next.add(container.id);
+                                  }
+                                  return next;
+                                });
+                              }}
+                              className="w-4 h-4 accent-blue-600"
+                            />
+                          </label>
                           <img
                             src={container.thumbnailUrl || container.imageData}
                             alt={container.name}
