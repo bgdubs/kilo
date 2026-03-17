@@ -488,6 +488,7 @@ export default function Home() {
   const moveToSet = async (targetSetId: number | null) => {
     if (!moveTarget) return;
     setLoading(true);
+    setError(null);
     try {
       if (moveTarget.type === "container") {
         await fetch("/api/containers", {
@@ -518,6 +519,47 @@ export default function Home() {
     setMoveTarget({ type, id });
     await fetchAllSets();
     setShowMoveModal(true);
+  };
+
+  const openBulkMoveModal = async () => {
+    await fetchAllSets();
+    setIsBulkMove(true);
+    setMoveTarget(null);
+    setShowMoveModal(true);
+  };
+
+  const bulkMoveToSet = async (targetSetId: number | null) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const ids = Array.from(selectedContainerIds);
+      const results = await Promise.allSettled(
+        ids.map(id =>
+          fetch("/api/containers", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id, setId: targetSetId }),
+          })
+        )
+      );
+      const failedIndices = results
+        .map((r, i) => ({ r, i }))
+        .filter(({ r }) => r.status === "rejected" || (r.status === "fulfilled" && !(r as PromiseFulfilledResult<Response>).value.ok))
+        .map(({ i }) => i);
+      if (failedIndices.length > 0) {
+        setError(`${failedIndices.length} container(s) could not be moved. The rest were moved successfully.`);
+      }
+      const failedIds = failedIndices.map(i => ids[i]);
+      setSelectedContainerIds(new Set(failedIds));
+      // Fire-and-forget refresh
+      fetchContainersForSet(currentSet?.id ?? null);
+      fetchSets(currentSet?.id ?? null);
+    } finally {
+      // Always close modal and reset bulk flag, even if an error is thrown
+      setShowMoveModal(false);
+      setIsBulkMove(false);
+      setLoading(false);
+    }
   };
 
   const handleDelete = async () => {
