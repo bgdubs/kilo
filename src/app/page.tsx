@@ -771,6 +771,7 @@ export default function Home() {
       setShowMoveModal(false);
       setIsBulkItemMove(false);
       setLoading(false);
+      setSelectedItemIds(new Set());
     }
   };
 
