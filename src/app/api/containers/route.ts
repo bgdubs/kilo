@@ -99,7 +99,7 @@ export async function PUT(request: Request) {
     }
 
     // Cycle detection: cannot move a container into its own descendant
-    if (parentContainerId) {
+    if (parentContainerId != null) {
       const wouldCycle = await isAncestor(parentContainerId, id);
       if (wouldCycle) {
         return NextResponse.json({ error: "Cannot move a container into its own descendant" }, { status: 400 });
