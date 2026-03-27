@@ -57,8 +57,8 @@ export async function POST(request: Request) {
     const processedImage = await processImage(imageData);
 
     const newItem = await db.insert(items).values({
-      containerId: containerId || null,
-      setId: setId || null,
+      containerId: containerId ?? null,
+      setId: setId ?? null,
       name,
       imageData: processedImage.imageData,
       quantity: quantity || 1,

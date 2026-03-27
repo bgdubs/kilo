@@ -19,7 +19,21 @@ function buildTree(
 ): TreeNode[] {
   const result: TreeNode[] = [];
 
-  function addSet(setId: number | null, depth: number) {
+  function addNestedContainers(parentContainerId: number, depth: number, visited = new Set<number>()) {
+    if (visited.has(parentContainerId)) return;
+    const nextVisited = new Set(visited);
+    nextVisited.add(parentContainerId);
+    const children = allContainers.filter(c => c.parentContainerId === parentContainerId);
+    for (const c of children) {
+      result.push({ id: c.id, type: "container", name: c.name, depth, parentId: parentContainerId, parentType: "container" });
+      addNestedContainers(c.id, depth + 1, nextVisited);
+    }
+  }
+
+  function addSet(setId: number | null, depth: number, visited = new Set<number>()) {
+    if (setId !== null && visited.has(setId)) return;
+    const nextVisited = new Set(visited);
+    if (setId !== null) nextVisited.add(setId);
     const children = allSets.filter(s => s.parentId === setId);
     for (const s of children) {
       result.push({ id: s.id, type: "set", name: s.name, depth, parentId: setId, parentType: setId ? "set" : null });
@@ -29,15 +43,7 @@ function buildTree(
         result.push({ id: c.id, type: "container", name: c.name, depth: depth + 1, parentId: s.id, parentType: "set" });
         addNestedContainers(c.id, depth + 2);
       }
-      addSet(s.id, depth + 1);
-    }
-  }
-
-  function addNestedContainers(parentContainerId: number, depth: number) {
-    const children = allContainers.filter(c => c.parentContainerId === parentContainerId);
-    for (const c of children) {
-      result.push({ id: c.id, type: "container", name: c.name, depth, parentId: parentContainerId, parentType: "container" });
-      addNestedContainers(c.id, depth + 1);
+      addSet(s.id, depth + 1, nextVisited);
     }
   }
 

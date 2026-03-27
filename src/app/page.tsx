@@ -2037,6 +2037,8 @@ export default function Home() {
                   .filter(node => {
                     if (moveTarget?.type === "set" && node.type === "container") return false;
                     if (moveTarget && node.type === moveTarget.type && node.id === moveTarget.id) return false;
+                    // Bulk move: can't move selected containers into themselves
+                    if (isBulkMove && node.type === "container" && selectedContainerIds.has(node.id)) return false;
                     if (moveSearchTerm && !node.name.toLowerCase().includes(moveSearchTerm.toLowerCase())) return false;
                     return true;
                   })

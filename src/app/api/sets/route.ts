@@ -76,7 +76,7 @@ export async function PUT(request: Request) {
     }
 
     // Cycle detection: cannot move a set into its own descendant
-    if (parentId) {
+    if (parentId != null) {
       const wouldCycle = await isAncestor(parentId, id);
       if (wouldCycle) {
         return NextResponse.json({ error: "Cannot move a set into its own descendant" }, { status: 400 });

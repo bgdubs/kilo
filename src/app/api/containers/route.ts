@@ -65,7 +65,7 @@ export async function POST(request: Request) {
     if (!name || !imageData) {
       return NextResponse.json({ error: "Name and image data are required" }, { status: 400 });
     }
-    if (setId && parentContainerId) {
+    if (setId != null && parentContainerId != null) {
       return NextResponse.json({ error: "Container cannot have both setId and parentContainerId" }, { status: 400 });
     }
 
@@ -76,8 +76,8 @@ export async function POST(request: Request) {
       imageData: processedImage.imageData,
       description: description || null,
       category: category || null,
-      setId: setId || null,
-      parentContainerId: parentContainerId || null,
+      setId: setId ?? null,
+      parentContainerId: parentContainerId ?? null,
     }).returning();
 
     return NextResponse.json(newContainer[0], { status: 201 });
