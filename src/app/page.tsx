@@ -11,13 +11,16 @@ interface Container {
   thumbnailUrl?: string;
   category?: string;
   confidence?: number;
+  setId?: number | null;
+  parentContainerId?: number | null;
   createdAt: Date;
   updatedAt: Date;
 }
 
 interface Item {
   id: number;
-  containerId: number;
+  containerId?: number | null;
+  setId?: number | null;
   name: string;
   description?: string;
   imageData: string;
@@ -29,6 +32,15 @@ interface Item {
   createdAt: Date;
   updatedAt: Date;
 }
+
+type TreeNode = {
+  id: number;
+  type: "set" | "container";
+  name: string;
+  depth: number;
+  parentId: number | null;
+  parentType: "set" | "container" | null;
+};
 
 interface InventorySet {
   id: number;
@@ -51,6 +63,7 @@ export default function Home() {
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(false);
+  const [identifying, setIdentifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ type: "container" | "item" | "set"; id: number } | null>(null);
@@ -86,10 +99,26 @@ export default function Home() {
   const [newSetDescription, setNewSetDescription] = useState("");
   const [showCreateSet, setShowCreateSet] = useState(false);
   const [showMoveModal, setShowMoveModal] = useState(false);
-  const [moveTarget, setMoveTarget] = useState<{ type: "container" | "set"; id: number } | null>(null);
+  const [moveTarget, setMoveTarget] = useState<{ type: "container" | "set" | "item"; id: number } | null>(null);
   const [isBulkMove, setIsBulkMove] = useState(false);
   const [allSets, setAllSets] = useState<InventorySet[]>([]);
   const [selectedContainerIds, setSelectedContainerIds] = useState<Set<number>>(new Set());
+
+  // Standalone items in browse view
+  const [standaloneItems, setStandaloneItems] = useState<Item[]>([]);
+  // Container navigation stack (for nested containers in items view)
+  const [containerStack, setContainerStack] = useState<Container[]>([]);
+  // "+" create dropdown
+  const [showAddDropdown, setShowAddDropdown] = useState(false);
+  // Create standalone item from browse view
+  const [showCreateItem, setShowCreateItem] = useState(false);
+  // Tree nodes for move picker
+  const [treeNodes, setTreeNodes] = useState<TreeNode[]>([]);
+  const [moveSearchTerm, setMoveSearchTerm] = useState("");
+  // New entity id for auto-scroll after creation
+  const [newEntityId, setNewEntityId] = useState<{ type: "set" | "container" | "item"; id: number } | null>(null);
+  // Nested containers in items view
+  const [nestedContainers, setNestedContainers] = useState<Container[]>([]);
 
   const containerInputRef = useRef<HTMLInputElement>(null);
   const itemInputRef = useRef<HTMLInputElement>(null);
@@ -161,14 +190,71 @@ export default function Home() {
     }
   }, []);
 
+  const fetchStandaloneItems = useCallback(async (setId: number | null) => {
+    try {
+      const param = setId === null ? "null" : String(setId);
+      const res = await fetch(`/api/items?setId=${param}`);
+      if (!res.ok) throw new Error("Failed to fetch standalone items");
+      const data = await res.json();
+      setStandaloneItems(data);
+    } catch (err) {
+      console.error("Failed to fetch standalone items:", err);
+    }
+  }, []);
+
+  const fetchTree = useCallback(async () => {
+    try {
+      const res = await fetch("/api/tree");
+      if (!res.ok) throw new Error("Failed to fetch tree");
+      const data = await res.json();
+      setTreeNodes(data);
+    } catch (err) {
+      console.error("Failed to fetch tree:", err);
+    }
+  }, []);
+
+  const fetchNestedContainers = useCallback(async (containerId: number) => {
+    try {
+      const res = await fetch(`/api/containers?parentContainerId=${containerId}`);
+      if (!res.ok) throw new Error("Failed to fetch nested containers");
+      const data = await res.json();
+      setNestedContainers(data);
+    } catch (err) {
+      console.error("Failed to fetch nested containers:", err);
+    }
+  }, []);
+
   useEffect(() => {
     fetchSets(null);
     fetchContainersForSet(null);
-  }, [fetchSets, fetchContainersForSet]);
+    fetchStandaloneItems(null);
+  }, [fetchSets, fetchContainersForSet, fetchStandaloneItems]);
 
   useEffect(() => {
     setSelectedContainerIds(new Set());
   }, [currentSet, view]);
+
+  // Close "+" dropdown when clicking outside
+  useEffect(() => {
+    if (!showAddDropdown) return;
+    const handler = () => setShowAddDropdown(false);
+    document.addEventListener("click", handler, { capture: true });
+    return () => document.removeEventListener("click", handler, { capture: true });
+  }, [showAddDropdown]);
+
+  // Auto-scroll to newly created entity and flash it
+  useEffect(() => {
+    if (!newEntityId) return;
+    const el = document.getElementById(`${newEntityId.type}-${newEntityId.id}`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.classList.add("ring-2", "ring-blue-400", "ring-offset-2");
+      setTimeout(() => {
+        el.classList.remove("ring-2", "ring-blue-400", "ring-offset-2");
+        setNewEntityId(null);
+      }, 2000);
+    }
+  }, [newEntityId, containers, standaloneItems, sets]);
 
   const fetchItems = async (containerId: number) => {
     setLoading(true);
@@ -181,6 +267,7 @@ export default function Home() {
       }
       const data = await res.json();
       setItems(data);
+      await fetchNestedContainers(containerId);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to load items";
       setError(errorMessage);
@@ -214,6 +301,33 @@ export default function Home() {
     }
   };
 
+  const identifyImage = async (target: "container" | "item") => {
+    if (!capturedImage) return;
+    setIdentifying(true);
+    try {
+      const res = await fetch("/api/recognize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageData: capturedImage }),
+      });
+      if (!res.ok) throw new Error("Identification failed");
+      const { name, description, category } = await res.json();
+      if (target === "container") {
+        if (name) setNewContainerName(name);
+        if (description) setNewContainerDescription(description);
+        if (category) setNewContainerCategory(category);
+      } else {
+        if (name) setNewItemName(name);
+        if (description) setNewItemDescription(description);
+        if (category) setNewItemCategory(category);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Identification failed");
+    } finally {
+      setIdentifying(false);
+    }
+  };
+
   const createContainer = async () => {
     if (!capturedImage || !newContainerName) return;
 
@@ -237,13 +351,14 @@ export default function Home() {
         throw new Error(errorData.error || "Failed to create container");
       }
 
+      const created = await res.json();
       setCapturedImage(null);
       setNewContainerName("");
       setNewContainerDescription("");
       setNewContainerCategory("");
       setNewContainerConfidence(null);
-
       await fetchContainersForSet(currentSet?.id ?? null);
+      setNewEntityId({ type: "container", id: created.id });
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to create container";
       setError(errorMessage);
@@ -336,6 +451,44 @@ export default function Home() {
     }
   };
 
+  const createStandaloneItem = async () => {
+    if (!capturedImage || !newItemName) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/items", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          setId: currentSet?.id || null,
+          name: newItemName,
+          imageData: capturedImage,
+          quantity: newItemQuantity || 1,
+          description: newItemDescription || undefined,
+          category: newItemCategory || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to create item");
+      }
+      const created = await res.json();
+      setShowCreateItem(false);
+      setCapturedImage(null);
+      setNewItemName("");
+      setNewItemDescription("");
+      setNewItemCategory("");
+      setNewItemConfidence(null);
+      setNewItemQuantity(1);
+      await fetchStandaloneItems(currentSet?.id ?? null);
+      setNewEntityId({ type: "item", id: created.id });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create item");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const updateItem = async () => {
     if (!selectedItem) return;
 
@@ -402,11 +555,13 @@ export default function Home() {
         body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error("Failed to create set");
+      const created = await res.json();
       setShowCreateSet(false);
       setNewSetName("");
       setNewSetDescription("");
       setCapturedImage(null);
       await fetchSets(currentSet?.id ?? null);
+      setNewEntityId({ type: "set", id: created.id });
     } catch (err) {
       setError("Failed to create set");
       console.error(err);
@@ -454,26 +609,51 @@ export default function Home() {
     setCurrentSet(set);
     setShowAllItems(false);
     setSearchTerm("");
+    setContainerStack([]);
     await Promise.all([
       fetchSets(set.id),
       fetchContainersForSet(set.id),
+      fetchStandaloneItems(set.id),
     ]);
   };
 
   const navigateToBreadcrumb = async (index: number) => {
+    setContainerStack([]);
     if (index === -1) {
       setCurrentSet(null);
       setBreadcrumbs([]);
       setShowAllItems(false);
       setSearchTerm("");
-      await Promise.all([fetchSets(null), fetchContainersForSet(null)]);
+      await Promise.all([fetchSets(null), fetchContainersForSet(null), fetchStandaloneItems(null)]);
     } else {
       const target = breadcrumbs[index];
       setCurrentSet(target);
       setBreadcrumbs(prev => prev.slice(0, index + 1));
       setShowAllItems(false);
       setSearchTerm("");
-      await Promise.all([fetchSets(target.id), fetchContainersForSet(target.id)]);
+      await Promise.all([fetchSets(target.id), fetchContainersForSet(target.id), fetchStandaloneItems(target.id)]);
+    }
+  };
+
+  const navigateIntoContainer = async (container: Container) => {
+    setContainerStack(prev => [...prev, container]);
+    setSelectedContainer(container);
+    await fetchItems(container.id);
+    setView("items");
+  };
+
+  const navigateContainerBack = async (index: number) => {
+    if (index === -1) {
+      setContainerStack([]);
+      setSelectedContainer(null);
+      setItems([]);
+      setNestedContainers([]);
+      setView("browse");
+    } else {
+      const target = containerStack[index];
+      setContainerStack(prev => prev.slice(0, index + 1));
+      setSelectedContainer(target);
+      await fetchItems(target.id);
     }
   };
 
@@ -485,62 +665,71 @@ export default function Home() {
   };
 
   // Move function
-  const moveToSet = async (targetSetId: number | null) => {
+  const moveToDestination = async (dest: { id: number; type: "set" | "container" } | null) => {
     if (!moveTarget) return;
     setLoading(true);
     setError(null);
     try {
       if (moveTarget.type === "container") {
-        await fetch("/api/containers", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: moveTarget.id, setId: targetSetId }),
-        });
-      } else {
-        await fetch("/api/sets", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: moveTarget.id, parentId: targetSetId }),
-        });
+        const body: Record<string, unknown> = { id: moveTarget.id };
+        if (dest === null) { body.setId = null; body.parentContainerId = null; }
+        else if (dest.type === "set") { body.setId = dest.id; body.parentContainerId = null; }
+        else { body.parentContainerId = dest.id; body.setId = null; }
+        await fetch("/api/containers", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      } else if (moveTarget.type === "set") {
+        const parentId = dest?.type === "set" ? dest.id : null;
+        await fetch("/api/sets", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: moveTarget.id, parentId }) });
+      } else if (moveTarget.type === "item") {
+        const body: Record<string, unknown> = { id: moveTarget.id };
+        if (dest === null) { body.containerId = null; body.setId = null; }
+        else if (dest.type === "container") { body.containerId = dest.id; body.setId = null; }
+        else { body.setId = dest.id; body.containerId = null; }
+        await fetch("/api/items", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       }
       setShowMoveModal(false);
       setMoveTarget(null);
-      await fetchSets(currentSet?.id ?? null);
-      await fetchContainersForSet(currentSet?.id ?? null);
+      await Promise.all([
+        fetchSets(currentSet?.id ?? null),
+        fetchContainersForSet(currentSet?.id ?? null),
+        fetchStandaloneItems(currentSet?.id ?? null),
+      ]);
+      if (selectedContainer) await fetchItems(selectedContainer.id);
     } catch (err) {
-      setError("Failed to move item");
+      setError("Failed to move");
       console.error(err);
     } finally {
       setLoading(false);
     }
   };
 
-  const openMoveModal = async (type: "container" | "set", id: number) => {
+  const openMoveModal = async (type: "container" | "set" | "item", id: number) => {
     setMoveTarget({ type, id });
-    await fetchAllSets();
+    setMoveSearchTerm("");
+    await fetchTree();
     setShowMoveModal(true);
   };
 
   const openBulkMoveModal = async () => {
-    await fetchAllSets();
+    setMoveSearchTerm("");
+    await fetchTree();
     setIsBulkMove(true);
     setMoveTarget(null);
     setShowMoveModal(true);
   };
 
-  const bulkMoveToSet = async (targetSetId: number | null) => {
+  const bulkMoveToDestination = async (dest: { id: number; type: "set" | "container" } | null) => {
     setLoading(true);
     setError(null);
     try {
       const ids = Array.from(selectedContainerIds);
       const results = await Promise.allSettled(
-        ids.map(id =>
-          fetch("/api/containers", {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id, setId: targetSetId }),
-          })
-        )
+        ids.map(id => {
+          const body: Record<string, unknown> = { id };
+          if (dest === null) { body.setId = null; body.parentContainerId = null; }
+          else if (dest.type === "set") { body.setId = dest.id; body.parentContainerId = null; }
+          else { body.parentContainerId = dest.id; body.setId = null; }
+          return fetch("/api/containers", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        })
       );
       const failedIndices = results
         .map((r, i) => ({ r, i }))
@@ -549,13 +738,10 @@ export default function Home() {
       if (failedIndices.length > 0) {
         setError(`${failedIndices.length} container(s) could not be moved. The rest were moved successfully.`);
       }
-      const failedIds = failedIndices.map(i => ids[i]);
-      setSelectedContainerIds(new Set(failedIds));
-      // Fire-and-forget refresh
+      setSelectedContainerIds(new Set(failedIndices.map(i => ids[i])));
       fetchContainersForSet(currentSet?.id ?? null);
       fetchSets(currentSet?.id ?? null);
     } finally {
-      // Always close modal and reset bulk flag, even if an error is thrown
       setShowMoveModal(false);
       setIsBulkMove(false);
       setLoading(false);
@@ -564,31 +750,32 @@ export default function Home() {
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
-
     setLoading(true);
     setError(null);
     try {
       const endpoint = deleteTarget.type === "container" ? "/api/containers"
         : deleteTarget.type === "item" ? "/api/items"
         : "/api/sets";
-      const res = await fetch(`${endpoint}?id=${deleteTarget.id}`, {
-        method: "DELETE",
-      });
-
+      const res = await fetch(`${endpoint}?id=${deleteTarget.id}`, { method: "DELETE" });
       if (!res.ok) throw new Error(`Failed to delete ${deleteTarget.type}`);
-
       setShowDeleteConfirm(false);
       setDeleteTarget(null);
-
       if (deleteTarget.type === "container") {
         await fetchContainersForSet(currentSet?.id ?? null);
+        await fetchStandaloneItems(currentSet?.id ?? null);
         setSelectedContainer(null);
         setItems([]);
+        setNestedContainers([]);
       } else if (deleteTarget.type === "set") {
         await fetchSets(currentSet?.id ?? null);
         await fetchContainersForSet(currentSet?.id ?? null);
-      } else if (selectedContainer) {
-        await fetchItems(selectedContainer.id);
+        await fetchStandaloneItems(currentSet?.id ?? null);
+      } else {
+        // item deleted
+        if (selectedContainer) {
+          await fetchItems(selectedContainer.id);
+        }
+        await fetchStandaloneItems(currentSet?.id ?? null);
       }
     } catch (err) {
       setError(`Failed to delete ${deleteTarget.type}`);
@@ -823,27 +1010,44 @@ export default function Home() {
               </div>
             )}
 
-            {/* Header with buttons */}
+            {/* Header with "+" dropdown */}
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-2xl font-semibold">{currentSet ? currentSet.name : "Inventory"}</h2>
-              <div className="flex gap-2">
+              <div className="relative" onClick={e => e.stopPropagation()}>
                 <button
-                  onClick={() => {
-                    setNewSetName("");
-                    setNewSetDescription("");
-                    setCapturedImage(null);
-                    setShowCreateSet(true);
-                  }}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded"
+                  onClick={() => setShowAddDropdown(prev => !prev)}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded text-xl font-bold leading-none"
                 >
-                  + Add Set
+                  +
                 </button>
-                <button
-                  onClick={() => containerInputRef.current?.click()}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
-                >
-                  + Add Container
-                </button>
+                {showAddDropdown && (
+                  <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-30 min-w-[160px]">
+                    <button
+                      onClick={() => {
+                        setShowAddDropdown(false);
+                        setNewSetName("");
+                        setNewSetDescription("");
+                        setCapturedImage(null);
+                        setShowCreateSet(true);
+                      }}
+                      className="w-full text-left px-4 py-3 hover:bg-gray-50 flex items-center gap-2 text-sm"
+                    >
+                      <span>📁</span> New Set
+                    </button>
+                    <button
+                      onClick={() => { setShowAddDropdown(false); containerInputRef.current?.click(); }}
+                      className="w-full text-left px-4 py-3 hover:bg-gray-50 flex items-center gap-2 text-sm border-t"
+                    >
+                      <span>📦</span> New Container
+                    </button>
+                    <button
+                      onClick={() => { setShowAddDropdown(false); setShowCreateItem(true); }}
+                      className="w-full text-left px-4 py-3 hover:bg-gray-50 flex items-center gap-2 text-sm border-t"
+                    >
+                      <span>🏷️</span> New Item
+                    </button>
+                  </div>
+                )}
               </div>
               <input
                 ref={containerInputRef}
@@ -936,6 +1140,7 @@ export default function Home() {
                       {filteredSets.map(set => (
                         <div
                           key={set.id}
+                          id={`set-${set.id}`}
                           className="bg-white rounded-lg shadow overflow-hidden hover:shadow-lg transition-shadow border-l-4 border-emerald-500"
                         >
                           {set.imageData ? (
@@ -1016,6 +1221,7 @@ export default function Home() {
                       {filteredContainers.map(container => (
                         <div
                           key={container.id}
+                          id={`container-${container.id}`}
                           className={`bg-white rounded-lg shadow overflow-hidden hover:shadow-lg transition-shadow relative ${
                             selectedContainerIds.has(container.id) ? "ring-2 ring-blue-500" : ""
                           }`}
@@ -1101,9 +1307,58 @@ export default function Home() {
                   </div>
                 )}
 
-                {filteredSets.length === 0 && filteredContainers.length === 0 && (
+                {/* Standalone items at this level */}
+                {standaloneItems.filter(item =>
+                  item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                  (item.description && item.description.toLowerCase().includes(searchTerm.toLowerCase()))
+                ).length > 0 && (
+                  <div className="mt-6">
+                    <h3 className="text-lg font-medium text-gray-700 mb-3">Items</h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                      {standaloneItems
+                        .filter(item =>
+                          item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          (item.description && item.description.toLowerCase().includes(searchTerm.toLowerCase()))
+                        )
+                        .map(item => (
+                          <div
+                            key={item.id}
+                            id={`item-${item.id}`}
+                            className="bg-white rounded-lg shadow overflow-hidden hover:shadow-lg transition-shadow transition-all duration-500"
+                          >
+                            <img
+                              src={item.thumbnailUrl || item.imageData}
+                              alt={item.name}
+                              className="w-full h-48 object-cover"
+                              loading="lazy"
+                            />
+                            <div className="p-4">
+                              <h3 className="font-semibold text-lg mb-1">{item.name}</h3>
+                              {item.quantity > 1 && (
+                                <span className="inline-block bg-green-100 text-green-800 text-xs px-2 py-1 rounded mb-2">
+                                  Qty: {item.quantity}
+                                </span>
+                              )}
+                              {item.category && (
+                                <span className="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded mb-2 ml-1">
+                                  {item.category}
+                                </span>
+                              )}
+                              <div className="flex gap-2 mt-2">
+                                <button onClick={() => openEditItem(item)} className="flex-1 bg-yellow-100 hover:bg-yellow-200 text-yellow-700 px-3 py-1 rounded text-sm">Edit</button>
+                                <button onClick={() => openMoveModal("item", item.id)} className="bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-1 rounded text-sm">Move</button>
+                                <button onClick={() => confirmDelete("item", item.id)} className="bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1 rounded text-sm">Delete</button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
+
+                {filteredSets.length === 0 && filteredContainers.length === 0 && standaloneItems.length === 0 && (
                   <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
-                    {searchTerm ? "No sets or containers match your search" : "Nothing here yet. Add a set or container to get started!"}
+                    {searchTerm ? "No items match your search" : "Nothing here yet. Tap + to add a set, container, or item!"}
                   </div>
                 )}
               </div>
@@ -1121,7 +1376,7 @@ export default function Home() {
                 disabled={loading}
                 className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-4 py-2 rounded text-sm font-medium"
               >
-                Move to Set
+                Move to…
               </button>
               <button
                 onClick={() => setSelectedContainerIds(new Set())}
@@ -1138,17 +1393,26 @@ export default function Home() {
           <div>
             <div className="flex justify-between items-center mb-4">
               <div>
-                <button
-                  onClick={() => {
-                    setView("browse");
-                    setSelectedContainer(null);
-                    setItems([]);
-                  }}
-                  className="text-blue-600 hover:text-blue-800 mb-2"
-                >
-                  &larr; Back to {currentSet ? currentSet.name : "All"}
-                </button>
-                <h2 className="text-2xl font-semibold">Items in {selectedContainer.name}</h2>
+                {/* Container breadcrumb trail */}
+                <div className="flex items-center gap-1 text-sm mb-2 flex-wrap">
+                  <button
+                    onClick={() => navigateContainerBack(-1)}
+                    className="text-blue-600 hover:text-blue-800"
+                  >
+                    {currentSet ? currentSet.name : "Home"}
+                  </button>
+                  {containerStack.map((c, i) => (
+                    <span key={c.id} className="flex items-center gap-1">
+                      <span className="text-gray-400">/</span>
+                      {i === containerStack.length - 1 ? (
+                        <span className="text-gray-700 font-medium">{c.name}</span>
+                      ) : (
+                        <button onClick={() => navigateContainerBack(i)} className="text-blue-600 hover:text-blue-800">{c.name}</button>
+                      )}
+                    </span>
+                  ))}
+                </div>
+                <h2 className="text-2xl font-semibold">{selectedContainer.name}</h2>
               </div>
               <button
                 onClick={() => itemInputRef.current?.click()}
@@ -1226,6 +1490,34 @@ export default function Home() {
               </div>
             )}
 
+            {/* Nested containers inside this container */}
+            {nestedContainers.length > 0 && (
+              <div className="mb-6">
+                <h3 className="text-lg font-medium text-gray-700 mb-3">Containers inside {selectedContainer.name}</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                  {nestedContainers.map(c => (
+                    <div key={c.id} id={`container-${c.id}`} className="bg-white rounded-lg shadow overflow-hidden hover:shadow-lg transition-shadow border-l-4 border-blue-400">
+                      <img
+                        src={c.thumbnailUrl || c.imageData}
+                        alt={c.name}
+                        className="w-full h-48 object-cover cursor-pointer"
+                        loading="lazy"
+                        onClick={() => navigateIntoContainer(c)}
+                      />
+                      <div className="p-4">
+                        <h3 className="font-semibold text-lg mb-1">{c.name}</h3>
+                        <div className="flex gap-2">
+                          <button onClick={() => navigateIntoContainer(c)} className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1 rounded text-sm">Open</button>
+                          <button onClick={() => openMoveModal("container", c.id)} className="bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-1 rounded text-sm">Move</button>
+                          <button onClick={() => confirmDelete("container", c.id)} className="bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1 rounded text-sm">Delete</button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {filteredItems.length === 0 ? (
               <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
                 {searchTerm ? "No items match your search" : "No items yet. Click 'Add Item' to get started!"}
@@ -1269,6 +1561,12 @@ export default function Home() {
                           className="flex-1 bg-yellow-100 hover:bg-yellow-200 text-yellow-700 px-3 py-1 rounded text-sm"
                         >
                           Edit
+                        </button>
+                        <button
+                          onClick={() => openMoveModal("item", item.id)}
+                          className="bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-1 rounded text-sm"
+                        >
+                          Move
                         </button>
                         <button
                           onClick={() => confirmDelete("item", item.id)}
@@ -1500,6 +1798,13 @@ export default function Home() {
             <div className="bg-white rounded-lg shadow-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
               <h3 className="text-xl font-semibold mb-4">New Container</h3>
               <img src={capturedImage} alt="Captured" className="w-full h-48 object-cover rounded mb-4" />
+              <button
+                onClick={() => identifyImage("container")}
+                disabled={identifying}
+                className="w-full bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded mb-4 disabled:opacity-50"
+              >
+                {identifying ? "Identifying..." : "✨ Identify with AI"}
+              </button>
 
               <div className="space-y-3">
                 <div>
@@ -1558,6 +1863,13 @@ export default function Home() {
             <div className="bg-white rounded-lg shadow-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
               <h3 className="text-xl font-semibold mb-4">New Item</h3>
               <img src={capturedImage} alt="Captured" className="w-full h-48 object-cover rounded mb-4" />
+              <button
+                onClick={() => identifyImage("item")}
+                disabled={identifying}
+                className="w-full bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded mb-4 disabled:opacity-50"
+              >
+                {identifying ? "Identifying..." : "✨ Identify with AI"}
+              </button>
 
               <div className="space-y-3">
                 <div>
@@ -1649,34 +1961,117 @@ export default function Home() {
           </div>
         )}
 
+        {/* Create Standalone Item Modal */}
+        {showCreateItem && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-lg shadow-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
+              <h3 className="text-xl font-semibold mb-4">
+                New Item{currentSet ? ` in ${currentSet.name}` : " (standalone)"}
+              </h3>
+              {!capturedImage ? (
+                <div className="text-center py-6 space-y-3">
+                  <button
+                    onClick={() => itemInputRef.current?.click()}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg block mx-auto"
+                  >
+                    📷 Take Photo
+                  </button>
+                  <input
+                    ref={itemInputRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={handleItemImageCapture}
+                    className="hidden"
+                  />
+                  <button
+                    onClick={() => { setShowCreateItem(false); resetForm(); }}
+                    className="text-sm text-gray-500 hover:text-gray-700"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <img src={capturedImage} alt="Captured" className="w-full h-48 object-cover rounded mb-4" />
+                  <button
+                    onClick={() => identifyImage("item")}
+                    disabled={identifying}
+                    className="w-full bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded mb-4 disabled:opacity-50"
+                  >
+                    {identifying ? "Identifying..." : "✨ Identify with AI"}
+                  </button>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Name *</label>
+                      <input type="text" value={newItemName} onChange={e => setNewItemName(e.target.value)} className="border px-3 py-2 rounded w-full" placeholder="Item name" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Description</label>
+                      <textarea value={newItemDescription} onChange={e => setNewItemDescription(e.target.value)} className="border px-3 py-2 rounded w-full" rows={2} placeholder="Optional description" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Category</label>
+                      <input type="text" value={newItemCategory} onChange={e => setNewItemCategory(e.target.value)} className="border px-3 py-2 rounded w-full" placeholder="Optional category" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Quantity</label>
+                      <input type="number" min="1" value={newItemQuantity || ""} onChange={e => setNewItemQuantity(e.target.value === "" ? 0 : parseInt(e.target.value) || 0)} className="border px-3 py-2 rounded w-32" />
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={createStandaloneItem} disabled={loading || !newItemName} className="flex-1 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded disabled:opacity-50">Save Item</button>
+                      <button onClick={() => { setShowCreateItem(false); resetForm(); }} className="bg-gray-300 hover:bg-gray-400 text-gray-700 px-4 py-2 rounded">Cancel</button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Move-To Modal */}
         {showMoveModal && (moveTarget || isBulkMove) && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-lg shadow-lg p-6 max-w-md w-full max-h-[80vh] overflow-y-auto">
-              <h3 className="text-xl font-semibold mb-4">
+            <div className="bg-white rounded-lg shadow-lg p-6 max-w-md w-full max-h-[80vh] flex flex-col">
+              <h3 className="text-xl font-semibold mb-3">
                 {isBulkMove ? `Move ${selectedContainerIds.size} containers to…` : "Move to…"}
               </h3>
-              <div className="space-y-2">
+              <input
+                type="text"
+                placeholder="Search destinations..."
+                value={moveSearchTerm}
+                onChange={e => setMoveSearchTerm(e.target.value)}
+                className="border px-3 py-2 rounded mb-3 w-full text-sm"
+              />
+              <div className="flex-1 overflow-y-auto space-y-1 min-h-0">
                 <button
-                  onClick={() => isBulkMove ? bulkMoveToSet(null) : moveToSet(null)}
-                  className="w-full text-left px-4 py-3 rounded border hover:bg-gray-50 font-medium"
+                  onClick={() => isBulkMove ? bulkMoveToDestination(null) : moveToDestination(null)}
+                  className="w-full text-left px-4 py-3 rounded border hover:bg-gray-50 font-medium flex items-center gap-2 text-sm"
                 >
-                  Top Level (unassigned)
+                  🏠 Root (top level)
                 </button>
-                {allSets.filter(s => moveTarget?.type === "set" ? s.id !== moveTarget.id : true).map(set => (
-                  <button
-                    key={set.id}
-                    onClick={() => isBulkMove ? bulkMoveToSet(set.id) : moveToSet(set.id)}
-                    className="w-full text-left px-4 py-3 rounded border hover:bg-gray-50"
-                  >
-                    {set.name}
-                    {set.description && <span className="text-gray-500 text-sm ml-2">&mdash; {set.description}</span>}
-                  </button>
-                ))}
+                {treeNodes
+                  .filter(node => {
+                    if (moveTarget?.type === "set" && node.type === "container") return false;
+                    if (moveTarget && node.type === moveTarget.type && node.id === moveTarget.id) return false;
+                    if (moveSearchTerm && !node.name.toLowerCase().includes(moveSearchTerm.toLowerCase())) return false;
+                    return true;
+                  })
+                  .map(node => (
+                    <button
+                      key={`${node.type}-${node.id}`}
+                      onClick={() => isBulkMove ? bulkMoveToDestination({ id: node.id, type: node.type }) : moveToDestination({ id: node.id, type: node.type })}
+                      className="w-full text-left py-3 rounded border hover:bg-gray-50 flex items-center gap-2 text-sm"
+                      style={{ paddingLeft: `${1 + node.depth * 1.25}rem` }}
+                    >
+                      <span>{node.type === "set" ? "📁" : "📦"}</span>
+                      <span>{node.name}</span>
+                    </button>
+                  ))}
               </div>
               <button
                 onClick={() => { setShowMoveModal(false); setMoveTarget(null); setIsBulkMove(false); }}
-                className="mt-4 w-full bg-gray-300 hover:bg-gray-400 text-gray-700 px-4 py-2 rounded"
+                className="mt-4 w-full bg-gray-300 hover:bg-gray-400 text-gray-700 px-4 py-2 rounded text-sm"
               >
                 Cancel
               </button>

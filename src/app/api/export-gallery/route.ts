@@ -69,7 +69,7 @@ function buildContainerSection(
   },
   allItems: Array<{
     id: number;
-    containerId: number;
+    containerId: number | null;
     name: string;
     description: string | null;
     imageData: string;
@@ -120,7 +120,7 @@ function buildGalleryHTML(
   }>,
   allItems: Array<{
     id: number;
-    containerId: number;
+    containerId: number | null;
     name: string;
     description: string | null;
     imageData: string;
