@@ -41,7 +41,7 @@ function buildTree(
       const setContainers = allContainers.filter(c => c.setId === s.id && c.parentContainerId === null);
       for (const c of setContainers) {
         result.push({ id: c.id, type: "container", name: c.name, depth: depth + 1, parentId: s.id, parentType: "set" });
-        addNestedContainers(c.id, depth + 2);
+        addNestedContainers(c.id, depth + 2, new Set([c.id]));
       }
       addSet(s.id, depth + 1, nextVisited);
     }
