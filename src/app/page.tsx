@@ -214,6 +214,7 @@ export default function Home() {
 
   useEffect(() => {
     setSelectedContainerIds(new Set());
+    setSelectedItemIds(new Set());
   }, [currentSet, view]);
 
   // Close "+" dropdown when clicking outside
@@ -771,7 +772,6 @@ export default function Home() {
       setShowMoveModal(false);
       setIsBulkItemMove(false);
       setLoading(false);
-      setSelectedItemIds(new Set());
     }
   };
 
@@ -1466,7 +1466,8 @@ export default function Home() {
                 {filteredItems.length > 0 && (
                   <button
                     onClick={() => {
-                      if (selectedItemIds.size === filteredItems.length) {
+                      const allFilteredSelected = filteredItems.length > 0 && filteredItems.every(i => selectedItemIds.has(i.id));
+                      if (allFilteredSelected) {
                         setSelectedItemIds(new Set());
                       } else {
                         setSelectedItemIds(new Set(filteredItems.map(i => i.id)));
@@ -1474,7 +1475,7 @@ export default function Home() {
                     }}
                     className="text-sm text-blue-600 hover:text-blue-800"
                   >
-                    {selectedItemIds.size === filteredItems.length && filteredItems.length > 0 ? "Deselect all" : "Select all"}
+                    {filteredItems.length > 0 && filteredItems.every(i => selectedItemIds.has(i.id)) ? "Deselect all" : "Select all"}
                   </button>
                 )}
                 <button
