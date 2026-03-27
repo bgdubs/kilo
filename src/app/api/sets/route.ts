@@ -6,6 +6,20 @@ import { sets, containers } from "@/db/schema";
 import { eq, isNull, desc } from "drizzle-orm";
 import { processImage } from "@/lib/image-utils";
 
+/** Returns true if `ancestorId` is an ancestor of `nodeId` in the sets tree. */
+async function isAncestor(nodeId: number, ancestorId: number): Promise<boolean> {
+  let current: number | null = nodeId;
+  const visited = new Set<number>();
+  while (current !== null) {
+    if (current === ancestorId) return true;
+    if (visited.has(current)) break;
+    visited.add(current);
+    const row = await db.select({ parentId: sets.parentId }).from(sets).where(eq(sets.id, current));
+    current = row[0]?.parentId ?? null;
+  }
+  return false;
+}
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -22,10 +36,7 @@ export async function GET(request: Request) {
     return NextResponse.json(result);
   } catch (error) {
     console.error("Failed to fetch sets:", error);
-    return NextResponse.json({
-      error: "Failed to fetch sets",
-      details: error instanceof Error ? error.message : String(error),
-    }, { status: 500 });
+    return NextResponse.json({ error: "Failed to fetch sets" }, { status: 500 });
   }
 }
 
@@ -52,10 +63,7 @@ export async function POST(request: Request) {
     return NextResponse.json(newSet[0], { status: 201 });
   } catch (error) {
     console.error("Failed to create set:", error);
-    return NextResponse.json({
-      error: "Failed to create set",
-      details: error instanceof Error ? error.message : String(error),
-    }, { status: 500 });
+    return NextResponse.json({ error: "Failed to create set" }, { status: 500 });
   }
 }
 
@@ -65,6 +73,14 @@ export async function PUT(request: Request) {
 
     if (!id) {
       return NextResponse.json({ error: "Set ID is required" }, { status: 400 });
+    }
+
+    // Cycle detection: cannot move a set into its own descendant
+    if (parentId) {
+      const wouldCycle = await isAncestor(parentId, id);
+      if (wouldCycle) {
+        return NextResponse.json({ error: "Cannot move a set into its own descendant" }, { status: 400 });
+      }
     }
 
     const updateData: Record<string, unknown> = {};
@@ -86,10 +102,7 @@ export async function PUT(request: Request) {
     return NextResponse.json(updated[0]);
   } catch (error) {
     console.error("Failed to update set:", error);
-    return NextResponse.json({
-      error: "Failed to update set",
-      details: error instanceof Error ? error.message : String(error),
-    }, { status: 500 });
+    return NextResponse.json({ error: "Failed to update set" }, { status: 500 });
   }
 }
 
