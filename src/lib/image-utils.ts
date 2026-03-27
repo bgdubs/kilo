@@ -42,15 +42,18 @@ export async function processImage(
 
   // Parse base64 data
   const { mimeType, data } = parseBase64Image(imageData);
-  
+
   // Convert base64 to buffer
   const buffer = Buffer.from(data, 'base64');
-  
-  // Get image metadata
-  const metadata = await sharp(buffer).metadata();
+
+  // Rotate first so all subsequent dimension calculations use post-rotation coords
+  const rotatedBuffer = await sharp(buffer).rotate().toBuffer();
+
+  // Get image metadata from rotated buffer
+  const metadata = await sharp(rotatedBuffer).metadata();
   const originalWidth = metadata.width || 0;
   const originalHeight = metadata.height || 0;
-  
+
   // Calculate new dimensions maintaining aspect ratio
   const { width, height } = calculateDimensions(
     originalWidth,
@@ -58,24 +61,23 @@ export async function processImage(
     opts.maxWidth!,
     opts.maxHeight!
   );
-  
-  // Resize and compress main image
-  const processedBuffer = await sharp(buffer)
-    .rotate()
+
+  // Resize and compress main image (no .rotate() — already applied above)
+  const processedBuffer = await sharp(rotatedBuffer)
     .resize(width, height, {
       fit: 'inside',
       withoutEnlargement: true,
     })
     .jpeg({ quality: opts.quality! })
     .toBuffer();
-  
+
   // Generate thumbnail
-  const thumbnailBuffer = await generateThumbnail(buffer, opts.thumbnailSize!, opts.thumbnailQuality!);
-  
+  const thumbnailBuffer = await generateThumbnail(rotatedBuffer, opts.thumbnailSize!, opts.thumbnailQuality!);
+
   // Generate URLs (for now, use data URLs - in production, these would be file paths)
   const imageUrl = generateImageUrl();
   const thumbnailUrl = generateThumbnailUrl();
-  
+
   return {
     imageData: `data:${mimeType};base64,${processedBuffer.toString('base64')}`,
     imageUrl,
@@ -131,19 +133,18 @@ async function generateThumbnail(
   size: number,
   quality: number
 ): Promise<Buffer> {
-  // Get image metadata
+  // Get image metadata (buffer is already rotated)
   const metadata = await sharp(buffer).metadata();
   const originalWidth = metadata.width || 0;
   const originalHeight = metadata.height || 0;
-  
+
   // Calculate crop dimensions (center crop)
   const minDimension = Math.min(originalWidth, originalHeight);
   const startX = Math.floor((originalWidth - minDimension) / 2);
   const startY = Math.floor((originalHeight - minDimension) / 2);
-  
-  // Extract square crop and resize
+
+  // Extract square crop and resize (no .rotate() — buffer is already rotated)
   return await sharp(buffer)
-    .rotate()
     .extract({
       left: startX,
       top: startY,
