@@ -20,13 +20,15 @@ export const containers = sqliteTable("containers", {
   category: text("category"),
   confidence: real("confidence"),
   setId: integer("set_id"),
+  parentContainerId: integer("parent_container_id"),
   createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
   updatedAt: integer("updated_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
 });
 
 export const items = sqliteTable("items", {
   id: integer("id").primaryKey({ autoIncrement: true }),
-  containerId: integer("container_id").notNull().references(() => containers.id),
+  containerId: integer("container_id"),
+  setId: integer("set_id"),
   name: text("name").notNull(),
   description: text("description"),
   imageData: text("image_data").notNull(),

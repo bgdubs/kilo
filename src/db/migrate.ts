@@ -22,6 +22,7 @@ sqlite.exec(`
     category TEXT,
     confidence REAL,
     set_id INTEGER,
+    parent_container_id INTEGER,
     created_at INTEGER,
     updated_at INTEGER
   );
@@ -38,7 +39,8 @@ sqlite.exec(`
 
   CREATE TABLE IF NOT EXISTS items (
     id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-    container_id INTEGER NOT NULL,
+    container_id INTEGER,
+    set_id INTEGER,
     name TEXT NOT NULL,
     description TEXT,
     image_data TEXT NOT NULL,
@@ -48,8 +50,7 @@ sqlite.exec(`
     confidence REAL,
     quantity INTEGER NOT NULL DEFAULT 1,
     created_at INTEGER,
-    updated_at INTEGER,
-    FOREIGN KEY (container_id) REFERENCES containers(id) ON UPDATE NO ACTION ON DELETE NO ACTION
+    updated_at INTEGER
   );
 `);
 
