@@ -61,6 +61,7 @@ export async function processImage(
   
   // Resize and compress main image
   const processedBuffer = await sharp(buffer)
+    .rotate()
     .resize(width, height, {
       fit: 'inside',
       withoutEnlargement: true,
@@ -142,6 +143,7 @@ async function generateThumbnail(
   
   // Extract square crop and resize
   return await sharp(buffer)
+    .rotate()
     .extract({
       left: startX,
       top: startY,
