@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import type { TreeNode } from "@/app/api/tree/route";
 
 interface Container {
   id: number;
@@ -32,15 +33,6 @@ interface Item {
   createdAt: Date;
   updatedAt: Date;
 }
-
-type TreeNode = {
-  id: number;
-  type: "set" | "container";
-  name: string;
-  depth: number;
-  parentId: number | null;
-  parentType: "set" | "container" | null;
-};
 
 interface InventorySet {
   id: number;
@@ -101,7 +93,6 @@ export default function Home() {
   const [showMoveModal, setShowMoveModal] = useState(false);
   const [moveTarget, setMoveTarget] = useState<{ type: "container" | "set" | "item"; id: number } | null>(null);
   const [isBulkMove, setIsBulkMove] = useState(false);
-  const [allSets, setAllSets] = useState<InventorySet[]>([]);
   const [selectedContainerIds, setSelectedContainerIds] = useState<Set<number>>(new Set());
 
   // Standalone items in browse view
@@ -153,17 +144,6 @@ export default function Home() {
       setSets(data);
     } catch (err) {
       console.error("Failed to fetch sets:", err);
-    }
-  }, []);
-
-  const fetchAllSets = useCallback(async () => {
-    try {
-      const res = await fetch("/api/sets");
-      if (!res.ok) throw new Error("Failed to fetch all sets");
-      const data = await res.json();
-      setAllSets(data);
-    } catch (err) {
-      console.error("Failed to fetch all sets:", err);
     }
   }, []);
 
@@ -1249,11 +1229,7 @@ export default function Home() {
                             alt={container.name}
                             className="w-full h-48 object-cover cursor-pointer"
                             loading="lazy"
-                            onClick={() => {
-                              setSelectedContainer(container);
-                              fetchItems(container.id);
-                              setView("items");
-                            }}
+                            onClick={() => navigateIntoContainer(container)}
                           />
                           <div className="p-4">
                             <h3 className="font-semibold text-lg mb-1">{container.name}</h3>
@@ -1272,11 +1248,7 @@ export default function Home() {
                             )}
                             <div className="flex gap-2">
                               <button
-                                onClick={() => {
-                                  setSelectedContainer(container);
-                                  fetchItems(container.id);
-                                  setView("items");
-                                }}
+                                onClick={() => navigateIntoContainer(container)}
                                 className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1 rounded text-sm"
                               >
                                 View Items
@@ -1310,7 +1282,8 @@ export default function Home() {
                 {/* Standalone items at this level */}
                 {standaloneItems.filter(item =>
                   item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                  (item.description && item.description.toLowerCase().includes(searchTerm.toLowerCase()))
+                  (item.description && item.description.toLowerCase().includes(searchTerm.toLowerCase())) ||
+                  (item.category && item.category.toLowerCase().includes(searchTerm.toLowerCase()))
                 ).length > 0 && (
                   <div className="mt-6">
                     <h3 className="text-lg font-medium text-gray-700 mb-3">Items</h3>
@@ -1318,7 +1291,8 @@ export default function Home() {
                       {standaloneItems
                         .filter(item =>
                           item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          (item.description && item.description.toLowerCase().includes(searchTerm.toLowerCase()))
+                          (item.description && item.description.toLowerCase().includes(searchTerm.toLowerCase())) ||
+                          (item.category && item.category.toLowerCase().includes(searchTerm.toLowerCase()))
                         )
                         .map(item => (
                           <div
@@ -1793,7 +1767,7 @@ export default function Home() {
         )}
 
         {/* Create Container Form */}
-        {capturedImage && view === "browse" && !showCreateSet && (
+        {capturedImage && view === "browse" && !showCreateSet && !showCreateItem && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-lg shadow-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
               <h3 className="text-xl font-semibold mb-4">New Container</h3>
