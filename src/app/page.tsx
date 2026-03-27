@@ -1414,6 +1414,27 @@ export default function Home() {
             </div>
           </div>
         )}
+        {/* Bulk item selection action bar */}
+        {view === "items" && selectedItemIds.size > 0 && (
+          <div className="fixed bottom-0 left-0 right-0 z-50 flex items-center justify-between gap-4 bg-gray-900 text-white px-6 py-4 shadow-lg animate-in slide-in-from-bottom duration-200">
+            <span className="text-sm font-medium">{selectedItemIds.size} selected</span>
+            <div className="flex gap-3">
+              <button
+                onClick={openBulkItemMoveModal}
+                disabled={loading}
+                className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-4 py-2 rounded text-sm font-medium"
+              >
+                Move to…
+              </button>
+              <button
+                onClick={() => setSelectedItemIds(new Set())}
+                className="bg-gray-600 hover:bg-gray-500 text-white px-4 py-2 rounded text-sm"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Items View */}
         {view === "items" && selectedContainer && (
@@ -1441,12 +1462,28 @@ export default function Home() {
                 </div>
                 <h2 className="text-2xl font-semibold">{selectedContainer.name}</h2>
               </div>
-              <button
-                onClick={() => itemInputRef.current?.click()}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
-              >
-                + Add Item
-              </button>
+              <div className="flex items-center gap-2">
+                {filteredItems.length > 0 && (
+                  <button
+                    onClick={() => {
+                      if (selectedItemIds.size === filteredItems.length) {
+                        setSelectedItemIds(new Set());
+                      } else {
+                        setSelectedItemIds(new Set(filteredItems.map(i => i.id)));
+                      }
+                    }}
+                    className="text-sm text-blue-600 hover:text-blue-800"
+                  >
+                    {selectedItemIds.size === filteredItems.length && filteredItems.length > 0 ? "Deselect all" : "Select all"}
+                  </button>
+                )}
+                <button
+                  onClick={() => itemInputRef.current?.click()}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
+                >
+                  + Add Item
+                </button>
+              </div>
               <input
                 ref={itemInputRef}
                 type="file"
@@ -1554,8 +1591,26 @@ export default function Home() {
                 {filteredItems.map(item => (
                   <div
                     key={item.id}
-                    className="bg-white rounded-lg shadow overflow-hidden hover:shadow-lg transition-shadow"
+                    className="bg-white rounded-lg shadow overflow-hidden hover:shadow-lg transition-shadow relative"
                   >
+                    <label className="absolute top-2 left-2 z-10 cursor-pointer" onClick={e => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={selectedItemIds.has(item.id)}
+                        onChange={() => {
+                          setSelectedItemIds(prev => {
+                            const next = new Set(prev);
+                            if (next.has(item.id)) {
+                              next.delete(item.id);
+                            } else {
+                              next.add(item.id);
+                            }
+                            return next;
+                          });
+                        }}
+                        className="w-4 h-4 accent-blue-600"
+                      />
+                    </label>
                     <img
                       src={item.thumbnailUrl || item.imageData}
                       alt={item.name}
@@ -2057,11 +2112,15 @@ export default function Home() {
         )}
 
         {/* Move-To Modal */}
-        {showMoveModal && (moveTarget || isBulkMove) && (
+        {showMoveModal && (moveTarget || isBulkMove || isBulkItemMove) && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-lg shadow-lg p-6 max-w-md w-full max-h-[80vh] flex flex-col">
               <h3 className="text-xl font-semibold mb-3">
-                {isBulkMove ? `Move ${selectedContainerIds.size} containers to…` : "Move to…"}
+                {isBulkMove
+                  ? `Move ${selectedContainerIds.size} containers to…`
+                  : isBulkItemMove
+                  ? `Move ${selectedItemIds.size} items to…`
+                  : "Move to…"}
               </h3>
               <input
                 type="text"
@@ -2072,7 +2131,7 @@ export default function Home() {
               />
               <div className="flex-1 overflow-y-auto space-y-1 min-h-0">
                 <button
-                  onClick={() => isBulkMove ? bulkMoveToDestination(null) : moveToDestination(null)}
+                  onClick={() => isBulkMove ? bulkMoveToDestination(null) : isBulkItemMove ? bulkMoveItemsToDestination(null) : moveToDestination(null)}
                   className="w-full text-left px-4 py-3 rounded border hover:bg-gray-50 font-medium flex items-center gap-2 text-sm"
                 >
                   🏠 Root (top level)
@@ -2083,13 +2142,15 @@ export default function Home() {
                     if (moveTarget && node.type === moveTarget.type && node.id === moveTarget.id) return false;
                     // Bulk move: can't move selected containers into themselves
                     if (isBulkMove && node.type === "container" && selectedContainerIds.has(node.id)) return false;
+                    // Item bulk: can't move items to the container they're already in
+                    if (isBulkItemMove && node.type === "container" && node.id === selectedContainer?.id) return false;
                     if (moveSearchTerm && !node.name.toLowerCase().includes(moveSearchTerm.toLowerCase())) return false;
                     return true;
                   })
                   .map(node => (
                     <button
                       key={`${node.type}-${node.id}`}
-                      onClick={() => isBulkMove ? bulkMoveToDestination({ id: node.id, type: node.type }) : moveToDestination({ id: node.id, type: node.type })}
+                      onClick={() => isBulkMove ? bulkMoveToDestination({ id: node.id, type: node.type }) : isBulkItemMove ? bulkMoveItemsToDestination({ id: node.id, type: node.type }) : moveToDestination({ id: node.id, type: node.type })}
                       className="w-full text-left py-3 rounded border hover:bg-gray-50 flex items-center gap-2 text-sm"
                       style={{ paddingLeft: `${1 + node.depth * 1.25}rem` }}
                     >
@@ -2099,7 +2160,7 @@ export default function Home() {
                   ))}
               </div>
               <button
-                onClick={() => { setShowMoveModal(false); setMoveTarget(null); setIsBulkMove(false); }}
+                onClick={() => { setShowMoveModal(false); setMoveTarget(null); setIsBulkMove(false); setIsBulkItemMove(false); }}
                 className="mt-4 w-full bg-gray-300 hover:bg-gray-400 text-gray-700 px-4 py-2 rounded text-sm"
               >
                 Cancel
