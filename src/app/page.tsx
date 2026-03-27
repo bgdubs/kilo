@@ -221,8 +221,8 @@ export default function Home() {
   useEffect(() => {
     if (!showAddDropdown) return;
     const handler = () => setShowAddDropdown(false);
-    document.addEventListener("click", handler, { capture: true });
-    return () => document.removeEventListener("click", handler, { capture: true });
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
   }, [showAddDropdown]);
 
   // Auto-scroll to newly created entity and flash it
