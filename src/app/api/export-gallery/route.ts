@@ -121,6 +121,7 @@ function buildGalleryHTML(
   allItems: Array<{
     id: number;
     containerId: number | null;
+    setId: number | null;
     name: string;
     description: string | null;
     imageData: string;
@@ -154,45 +155,87 @@ function buildGalleryHTML(
 
   // Named sets first
   for (const s of allSets) {
-    const setContainers = containersBySet.get(s.id);
-    if (!setContainers || setContainers.length === 0) continue;
+    const setContainers = containersBySet.get(s.id) ?? [];
+    const standaloneItems = allItems.filter((i) => i.setId === s.id && i.containerId === null);
+    if (setContainers.length === 0 && standaloneItems.length === 0) continue;
 
     const containerHTML = setContainers
       .map((c) => buildContainerSection(c, allItems))
       .join("\n");
+
+    const standaloneHTML = standaloneItems.length > 0
+      ? `<div class="standalone-section">
+          <h3 class="standalone-heading">Standalone Items</h3>
+          <div class="grid">${standaloneItems.map((i) => `<div class="card">
+            <img src="${esc(i.imageData)}" alt="${esc(i.name)}">
+            <div class="info">
+              <h3>${esc(i.name)}</h3>
+              ${i.quantity > 1 ? `<span class="badge qty">Qty: ${i.quantity}</span>` : ""}
+              ${i.category ? `<span class="badge">${esc(i.category)}</span>` : ""}
+              ${i.description ? `<p class="desc">${esc(i.description)}</p>` : ""}
+            </div>
+          </div>`).join("\n")}</div>
+        </div>`
+      : "";
+
+    const metaParts = [];
+    if (setContainers.length > 0) metaParts.push(`${setContainers.length} container${setContainers.length !== 1 ? "s" : ""}`);
+    if (standaloneItems.length > 0) metaParts.push(`${standaloneItems.length} standalone item${standaloneItems.length !== 1 ? "s" : ""}`);
 
     setSections.push(`<details class="set-section" open>
         <summary class="set-header">
           <div>
             <h2>${esc(s.name)}</h2>
             ${s.description ? `<p class="desc">${esc(s.description)}</p>` : ""}
-            <p class="meta">${setContainers.length} container${setContainers.length !== 1 ? "s" : ""}</p>
+            <p class="meta">${metaParts.join(", ")}</p>
           </div>
           <span class="chevron"></span>
         </summary>
         <div class="set-contents">
           ${containerHTML}
+          ${standaloneHTML}
         </div>
       </details>`);
   }
 
-  // Unassigned containers
-  const unassigned = containersBySet.get(null);
-  if (unassigned && unassigned.length > 0) {
+  // Unassigned containers and root standalone items
+  const unassigned = containersBySet.get(null) ?? [];
+  const rootStandaloneItems = allItems.filter((i) => i.containerId === null && i.setId === null);
+  if (unassigned.length > 0 || rootStandaloneItems.length > 0) {
     const containerHTML = unassigned
       .map((c) => buildContainerSection(c, allItems))
       .join("\n");
+
+    const standaloneHTML = rootStandaloneItems.length > 0
+      ? `<div class="standalone-section">
+          <h3 class="standalone-heading">Standalone Items</h3>
+          <div class="grid">${rootStandaloneItems.map((i) => `<div class="card">
+            <img src="${esc(i.imageData)}" alt="${esc(i.name)}">
+            <div class="info">
+              <h3>${esc(i.name)}</h3>
+              ${i.quantity > 1 ? `<span class="badge qty">Qty: ${i.quantity}</span>` : ""}
+              ${i.category ? `<span class="badge">${esc(i.category)}</span>` : ""}
+              ${i.description ? `<p class="desc">${esc(i.description)}</p>` : ""}
+            </div>
+          </div>`).join("\n")}</div>
+        </div>`
+      : "";
+
+    const metaParts = [];
+    if (unassigned.length > 0) metaParts.push(`${unassigned.length} container${unassigned.length !== 1 ? "s" : ""}`);
+    if (rootStandaloneItems.length > 0) metaParts.push(`${rootStandaloneItems.length} standalone item${rootStandaloneItems.length !== 1 ? "s" : ""}`);
 
     setSections.push(`<details class="set-section" open>
         <summary class="set-header">
           <div>
             <h2>Unassigned</h2>
-            <p class="meta">${unassigned.length} container${unassigned.length !== 1 ? "s" : ""}</p>
+            <p class="meta">${metaParts.join(", ")}</p>
           </div>
           <span class="chevron"></span>
         </summary>
         <div class="set-contents">
           ${containerHTML}
+          ${standaloneHTML}
         </div>
       </details>`);
   }
@@ -203,7 +246,11 @@ function buildGalleryHTML(
     day: "numeric",
   });
 
-  const setCount = allSets.filter((s) => containersBySet.has(s.id) && containersBySet.get(s.id)!.length > 0).length;
+  const setCount = allSets.filter((s) => {
+    const hasContainers = containersBySet.has(s.id) && containersBySet.get(s.id)!.length > 0;
+    const hasStandalone = allItems.some((i) => i.setId === s.id && i.containerId === null);
+    return hasContainers || hasStandalone;
+  }).length;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -241,6 +288,8 @@ function buildGalleryHTML(
   .container-section[open] > .container-header .chevron { transform: rotate(45deg); }
   .container-section > .grid, .container-section > .empty { padding: 0 12px 16px; }
   .empty { color: #999; text-align: center; padding: 40px; }
+  .standalone-section { margin-top: 12px; }
+  .standalone-heading { font-size: 1rem; font-weight: 600; color: #555; margin-bottom: 10px; padding: 8px 12px; background: #f8f8f8; border-radius: 8px; }
   @media (max-width: 600px) {
     .grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
     .card img { height: 140px; }
