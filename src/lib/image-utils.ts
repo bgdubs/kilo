@@ -182,9 +182,9 @@ function generateThumbnailUrl(): string {
 export async function getImageInfo(base64: string): Promise<{ width: number; height: number; size: number }> {
   const { data } = parseBase64Image(base64);
   const buffer = Buffer.from(data, 'base64');
-  
-  const metadata = await sharp(buffer).metadata();
-  
+  const rotatedBuffer = await sharp(buffer).rotate().toBuffer();
+  const metadata = await sharp(rotatedBuffer).metadata();
+
   return {
     width: metadata.width || 0,
     height: metadata.height || 0,
