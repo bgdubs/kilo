@@ -655,16 +655,19 @@ export default function Home() {
         if (dest === null) { body.setId = null; body.parentContainerId = null; }
         else if (dest.type === "set") { body.setId = dest.id; body.parentContainerId = null; }
         else { body.parentContainerId = dest.id; body.setId = null; }
-        await fetch("/api/containers", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        const res = await fetch("/api/containers", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        if (!res.ok) throw new Error("Move failed");
       } else if (moveTarget.type === "set") {
         const parentId = dest?.type === "set" ? dest.id : null;
-        await fetch("/api/sets", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: moveTarget.id, parentId }) });
+        const res = await fetch("/api/sets", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: moveTarget.id, parentId }) });
+        if (!res.ok) throw new Error("Move failed");
       } else if (moveTarget.type === "item") {
         const body: Record<string, unknown> = { id: moveTarget.id };
         if (dest === null) { body.containerId = null; body.setId = null; }
         else if (dest.type === "container") { body.containerId = dest.id; body.setId = null; }
         else { body.setId = dest.id; body.containerId = null; }
-        await fetch("/api/items", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        const res = await fetch("/api/items", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        if (!res.ok) throw new Error("Move failed");
       }
       setShowMoveModal(false);
       setMoveTarget(null);
@@ -741,11 +744,17 @@ export default function Home() {
       setShowDeleteConfirm(false);
       setDeleteTarget(null);
       if (deleteTarget.type === "container") {
+        // Only exit container view if we deleted the container we're currently inside
+        if (deleteTarget.id === selectedContainer?.id) {
+          setSelectedContainer(null);
+          setItems([]);
+          setNestedContainers([]);
+          setView("browse");
+        } else if (selectedContainer) {
+          await fetchItems(selectedContainer.id); // re-fetches nested containers too
+        }
         await fetchContainersForSet(currentSet?.id ?? null);
         await fetchStandaloneItems(currentSet?.id ?? null);
-        setSelectedContainer(null);
-        setItems([]);
-        setNestedContainers([]);
       } else if (deleteTarget.type === "set") {
         await fetchSets(currentSet?.id ?? null);
         await fetchContainersForSet(currentSet?.id ?? null);
