@@ -23,6 +23,39 @@ try {
     updated_at INTEGER
   )`);
 
+  // Ensure containers table exists (basic schema for fresh DB)
+  sqlite.exec(`CREATE TABLE IF NOT EXISTS containers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT,
+    image_data TEXT NOT NULL,
+    image_url TEXT,
+    thumbnail_url TEXT,
+    category TEXT,
+    confidence REAL,
+    set_id INTEGER,
+    parent_container_id INTEGER,
+    created_at INTEGER,
+    updated_at INTEGER
+  )`);
+
+  // Ensure items table exists (basic schema for fresh DB)
+  sqlite.exec(`CREATE TABLE IF NOT EXISTS items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    container_id INTEGER,
+    set_id INTEGER,
+    name TEXT NOT NULL,
+    description TEXT,
+    image_data TEXT NOT NULL,
+    image_url TEXT,
+    thumbnail_url TEXT,
+    category TEXT,
+    confidence REAL,
+    quantity INTEGER NOT NULL DEFAULT 1,
+    created_at INTEGER,
+    updated_at INTEGER
+  )`);
+
   // Ensure containers.set_id exists
   const containerCols = sqlite.pragma('table_info(containers)') as Array<{ name: string }>;
   if (!containerCols.some(c => c.name === 'set_id')) {
@@ -40,8 +73,8 @@ try {
   const containerIdCol = itemCols.find(c => c.name === 'container_id');
   if (containerIdCol && containerIdCol.notnull === 1) {
     // Recreate with nullable container_id and new set_id column
+    sqlite.pragma('foreign_keys = OFF');
     sqlite.exec(`
-      PRAGMA foreign_keys = OFF;
       CREATE TABLE items_new (
         id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
         container_id INTEGER,
@@ -61,8 +94,8 @@ try {
         SELECT id, container_id, NULL, name, description, image_data, image_url, thumbnail_url, category, confidence, quantity, created_at, updated_at FROM items;
       DROP TABLE items;
       ALTER TABLE items_new RENAME TO items;
-      PRAGMA foreign_keys = ON;
     `);
+    sqlite.pragma('foreign_keys = ON');
   } else if (!itemCols.some(c => c.name === 'set_id')) {
     sqlite.exec(`ALTER TABLE items ADD COLUMN set_id INTEGER`);
   }

@@ -1,5 +1,3 @@
-import { migrate } from "drizzle-orm/better-sqlite3/migrator";
-import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
 import path from "path";
 
@@ -7,8 +5,6 @@ const dbPath = process.env.DB_PATH || path.join(process.cwd(), "inventory.db");
 const sqlite = new Database(dbPath);
 sqlite.pragma("journal_mode = WAL");
 sqlite.pragma("foreign_keys = ON");
-
-const db = drizzle(sqlite);
 
 // Create tables directly from schema (fresh DB)
 sqlite.exec(`
