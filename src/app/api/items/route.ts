@@ -50,7 +50,7 @@ export async function POST(request: Request) {
     if (!name || !imageData) {
       return NextResponse.json({ error: "Name and image data are required" }, { status: 400 });
     }
-    if (containerId && setId) {
+    if (containerId != null && setId != null) {
       return NextResponse.json({ error: "Item cannot have both containerId and setId" }, { status: 400 });
     }
 
@@ -80,7 +80,7 @@ export async function PUT(request: Request) {
     if (!id) {
       return NextResponse.json({ error: "Item ID is required" }, { status: 400 });
     }
-    if (containerId && setId) {
+    if (containerId != null && setId != null) {
       return NextResponse.json({ error: "Item cannot have both containerId and setId" }, { status: 400 });
     }
 
