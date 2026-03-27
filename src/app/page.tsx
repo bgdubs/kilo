@@ -93,6 +93,8 @@ export default function Home() {
   const [showMoveModal, setShowMoveModal] = useState(false);
   const [moveTarget, setMoveTarget] = useState<{ type: "container" | "set" | "item"; id: number } | null>(null);
   const [isBulkMove, setIsBulkMove] = useState(false);
+  const [isBulkItemMove, setIsBulkItemMove] = useState(false);
+  const [selectedItemIds, setSelectedItemIds] = useState<Set<number>>(new Set());
   const [selectedContainerIds, setSelectedContainerIds] = useState<Set<number>>(new Set());
 
   // Standalone items in browse view
@@ -618,11 +620,13 @@ export default function Home() {
   const navigateIntoContainer = async (container: Container) => {
     setContainerStack(prev => [...prev, container]);
     setSelectedContainer(container);
+    setSelectedItemIds(new Set());
     await fetchItems(container.id);
     setView("items");
   };
 
   const navigateContainerBack = async (index: number) => {
+    setSelectedItemIds(new Set());
     if (index === -1) {
       setContainerStack([]);
       setSelectedContainer(null);
@@ -700,6 +704,15 @@ export default function Home() {
     setShowMoveModal(true);
   };
 
+  const openBulkItemMoveModal = async () => {
+    setMoveSearchTerm("");
+    await fetchTree();
+    setIsBulkItemMove(true);
+    setIsBulkMove(false);
+    setMoveTarget(null);
+    setShowMoveModal(true);
+  };
+
   const bulkMoveToDestination = async (dest: { id: number; type: "set" | "container" } | null) => {
     setLoading(true);
     setError(null);
@@ -727,6 +740,36 @@ export default function Home() {
     } finally {
       setShowMoveModal(false);
       setIsBulkMove(false);
+      setLoading(false);
+    }
+  };
+
+  const bulkMoveItemsToDestination = async (dest: { id: number; type: "set" | "container" } | null) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const ids = Array.from(selectedItemIds);
+      const results = await Promise.allSettled(
+        ids.map(id => {
+          const body: Record<string, unknown> = { id };
+          if (dest === null) { body.containerId = null; body.setId = null; }
+          else if (dest.type === "container") { body.containerId = dest.id; body.setId = null; }
+          else { body.setId = dest.id; body.containerId = null; }
+          return fetch("/api/items", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        })
+      );
+      const failedIndices = results
+        .map((r, i) => ({ r, i }))
+        .filter(({ r }) => r.status === "rejected" || (r.status === "fulfilled" && !(r as PromiseFulfilledResult<Response>).value.ok))
+        .map(({ i }) => i);
+      if (failedIndices.length > 0) {
+        setError(`${failedIndices.length} item(s) could not be moved.`);
+      }
+      setSelectedItemIds(new Set(failedIndices.map(i => ids[i])));
+      if (selectedContainer) await fetchItems(selectedContainer.id);
+    } finally {
+      setShowMoveModal(false);
+      setIsBulkItemMove(false);
       setLoading(false);
     }
   };
